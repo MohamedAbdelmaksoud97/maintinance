@@ -1,5 +1,6 @@
 import { createAdhocTaskAction } from "@/app/auth/actions";
 import { AppShell, ContentCard, MetricCard, PageHeader, StatusBadge } from "@/app/ui/shell";
+import { SubmitButton } from "@/app/ui/submit-button";
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
 
@@ -109,9 +110,9 @@ export default async function AdHocTasksPage({
               <option value="urgent">عاجلة</option>
             </select>
           </label>
-          <button className="self-end rounded-lg bg-[#0b559f] px-4 py-3 text-sm font-black text-white shadow-sm">
+          <SubmitButton className="self-end" pendingText="جاري الإنشاء">
             إنشاء وإشعار العامل
-          </button>
+          </SubmitButton>
         </form>
       </ContentCard>
 

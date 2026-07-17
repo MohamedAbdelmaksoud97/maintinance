@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { resetPasswordAction } from "@/app/auth/actions";
 import { AuthShell } from "@/app/ui/shell";
+import { SubmitButton } from "@/app/ui/submit-button";
 
 export default async function ResetPasswordPage({
   searchParams,
@@ -25,9 +26,9 @@ export default async function ResetPasswordPage({
             className="mt-2 w-full rounded-lg border border-[#cbd7e3] bg-[#fbfcfd] px-3.5 py-3 font-semibold outline-none transition focus:border-[#0b559f] focus:bg-white focus:ring-4 focus:ring-[#0b559f]/10"
           />
         </label>
-        <button className="w-full rounded-lg bg-[#0b559f] px-4 py-3 text-sm font-black text-white shadow-sm transition hover:bg-[#0a3f78]">
+        <SubmitButton className="w-full" pendingText="جاري الإرسال">
           إرسال رابط الاسترجاع
-        </button>
+        </SubmitButton>
       </form>
       <Link href="/auth/login" className="mt-5 block text-sm font-extrabold text-[#0b559f]">
         العودة لتسجيل الدخول

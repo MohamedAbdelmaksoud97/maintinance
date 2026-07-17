@@ -1,5 +1,6 @@
 import { createPlannedTaskAction } from "@/app/auth/actions";
 import { AppShell, ContentCard, NavButton, PageHeader } from "@/app/ui/shell";
+import { SubmitButton } from "@/app/ui/submit-button";
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
 import Link from "next/link";
@@ -21,7 +22,7 @@ export default async function NewPlannedTaskPage({
     supabase.from("equipment").select("id,equipment_code,name").eq("is_active", true).order("equipment_code").limit(1200),
     supabase.from("materials").select("id,name,unit").eq("is_active", true).order("name"),
     supabase.from("workers").select("id,full_name").eq("is_active", true).order("full_name"),
-    supabase.from("maintenance_work_types").select("id,code,name").in("code", ["inspection", "oil_change", "greasing"]).order("name"),
+    supabase.from("maintenance_work_types").select("id,code,name").in("code", ["inspection", "oil_change", "greasing", "grease_change"]).order("name"),
   ]);
 
   return (
@@ -47,8 +48,8 @@ export default async function NewPlannedTaskPage({
           <Field name="planned_quantity_unit" label="وحدة الكمية" />
           <Field name="point_name" label="نقطة العمل" />
           <div className="flex gap-2 md:col-span-2">
-            <button className="rounded-lg bg-[#0b559f] px-5 py-3 text-sm font-black text-white shadow-sm">إضافة المهمة</button>
-            <Link href="/admin/planned-tasks" className="rounded-lg border border-[#cbd7e3] px-5 py-3 text-sm font-black text-[#324155]">
+            <SubmitButton className="px-5" pendingText="جاري الإضافة">إضافة المهمة</SubmitButton>
+            <Link href="/admin/planned-tasks" className="rounded-lg border border-[#cbd7e3] px-5 py-3 text-sm font-black text-[#324155] transition hover:-translate-y-0.5 hover:border-[#0b559f] hover:text-[#0b559f] hover:shadow-md active:translate-y-0">
               إلغاء
             </Link>
           </div>
@@ -90,6 +91,7 @@ function Field({
 function workTypeLabel(value: string) {
   if (value === "inspection") return "فحص";
   if (value === "oil_change") return "تغيير زيت";
-  if (value === "greasing") return "تشحيم";
+  if (value === "greasing") return "إضافة شحم";
+  if (value === "grease_change") return "تغيير شحم";
   return "مهمة صيانة";
 }

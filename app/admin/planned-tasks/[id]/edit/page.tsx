@@ -1,5 +1,6 @@
 import { updatePlannedTaskAction } from "@/app/auth/actions";
 import { AppShell, ContentCard, NavButton, PageHeader, StatusBadge } from "@/app/ui/shell";
+import { SubmitButton } from "@/app/ui/submit-button";
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
 import Link from "next/link";
@@ -71,8 +72,8 @@ export default async function PlannedTaskEditPage({
           <Field name="point_name" label="نقطة العمل" defaultValue={currentTask.maintenance_points?.point_name ?? ""} />
           <Field name="planned_quantity" type="number" step="0.01" label="الكمية" defaultValue={currentTask.planned_quantity?.toString() ?? ""} />
           <div className="flex gap-2 md:col-span-2">
-            <button className="rounded-lg bg-[#0b559f] px-5 py-3 text-sm font-black text-white shadow-sm">حفظ المهمة</button>
-            <Link href={`/admin/planned-tasks?page=${page}`} className="rounded-lg border border-[#cbd7e3] px-5 py-3 text-sm font-black text-[#324155]">
+            <SubmitButton className="px-5" pendingText="جاري الحفظ">حفظ المهمة</SubmitButton>
+            <Link href={`/admin/planned-tasks?page=${page}`} className="rounded-lg border border-[#cbd7e3] px-5 py-3 text-sm font-black text-[#324155] transition hover:-translate-y-0.5 hover:border-[#0b559f] hover:text-[#0b559f] hover:shadow-md active:translate-y-0">
               إلغاء
             </Link>
           </div>

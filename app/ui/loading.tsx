@@ -17,9 +17,7 @@ export function SectionLoading({
             <div className="h-4 w-32 animate-pulse rounded-full bg-[#dbe8f6]" />
             <div className="h-8 w-56 animate-pulse rounded-full bg-[#e8eef4]" />
           </div>
-          <div className="grid h-12 w-12 place-items-center rounded-lg bg-[#eef6ff]">
-            <span className="h-6 w-6 animate-spin rounded-full border-2 border-[#bdd6ee] border-t-[#0b559f]" />
-          </div>
+          <div className="h-12 w-12 animate-pulse rounded-lg bg-[#eef6ff]" />
         </div>
         <div className="h-28 animate-pulse rounded-lg bg-white shadow-sm" />
         <div className="grid gap-3 sm:grid-cols-3">

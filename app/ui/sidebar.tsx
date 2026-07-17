@@ -8,8 +8,11 @@ import {
   Boxes,
   CalendarDays,
   ClipboardList,
+  FileSpreadsheet,
   Gauge,
+  ListChecks,
   Menu,
+  Bell,
   PackagePlus,
   UserCheck,
   Wrench,
@@ -21,6 +24,9 @@ type NavigationScope = "admin" | "worker";
 const adminNavItems = [
   { href: "/", label: "لوحة الإحصائيات", icon: Gauge },
   { href: "/admin/planned-tasks", label: "خطة الصيانة", icon: CalendarDays },
+  { href: "/admin/reports", label: "التقارير", icon: FileSpreadsheet },
+  { href: "/admin/notifications", label: "إشعارات المدير", icon: Bell },
+  { href: "/admin/data-completion", label: "بيانات تحتاج استكمال", icon: ListChecks },
   { href: "/admin/oils", label: "الزيوت", icon: PackagePlus },
   { href: "/admin/equipment", label: "المعدات", icon: Boxes },
   { href: "/admin/ad-hoc-tasks", label: "مهمة عارضة", icon: Wrench },
@@ -37,7 +43,7 @@ export function MobileMenuButton({ onClick }: { onClick: () => void }) {
       type="button"
       aria-label="فتح القائمة"
       onClick={onClick}
-      className="grid h-11 w-11 place-items-center rounded-lg border border-[#dbe3ea] bg-white text-[#0b559f] shadow-sm lg:hidden"
+      className="grid h-11 w-11 place-items-center rounded-lg border border-[#dbe3ea] bg-white text-[#0b559f] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-[#0b559f] hover:shadow-md active:translate-y-0 lg:hidden"
     >
       <Menu size={23} />
     </button>
@@ -81,8 +87,8 @@ function SidebarContent({ onNavigate, scope }: { onNavigate?: () => void; scope:
               onClick={onNavigate}
               className={
                 active
-                  ? "flex items-center gap-3 rounded-lg bg-[#eef6ff] px-3 py-3 text-sm font-black text-[#0b559f]"
-                  : "flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-extrabold text-[#516173] transition hover:bg-[#f4f7fa] hover:text-[#0b559f]"
+                  ? "flex items-center gap-3 rounded-lg bg-[#eef6ff] px-3 py-3 text-sm font-black text-[#0b559f] shadow-sm transition duration-200"
+                  : "flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-extrabold text-[#516173] transition duration-200 hover:-translate-y-0.5 hover:bg-[#f4f7fa] hover:text-[#0b559f] hover:shadow-sm active:translate-y-0"
               }
             >
               <Icon size={19} strokeWidth={2.4} />
@@ -121,7 +127,7 @@ export function AppSidebar({ scope = "admin" }: { scope?: NavigationScope }) {
               type="button"
               aria-label="إغلاق القائمة"
               onClick={() => setOpen(false)}
-              className="absolute left-3 top-3 grid h-9 w-9 place-items-center rounded-lg bg-[#f4f7fa] text-[#172033]"
+              className="absolute left-3 top-3 grid h-9 w-9 place-items-center rounded-lg bg-[#f4f7fa] text-[#172033] transition duration-200 hover:-translate-y-0.5 hover:bg-[#e8eef4] hover:shadow-md active:translate-y-0"
             >
               <X size={20} />
             </button>

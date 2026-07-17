@@ -1,89 +1,80 @@
 import { signOutAction } from "@/app/auth/actions";
 import { AppShell, ContentCard, MetricCard, PageHeader } from "@/app/ui/shell";
+import { SubmitButton } from "@/app/ui/submit-button";
 import { getDashboardSummary } from "@/utils/dashboard";
 
 type Tone = "neutral" | "success" | "warning" | "danger";
 
 export default async function Page() {
   const summary = await getDashboardSummary();
-  const attentionTotal = summary.missedTasks + summary.pendingWorkers + summary.lowStockMaterials;
-  const portfolioTotal = summary.equipment + summary.materials;
-  const maxDailyValue = Math.max(
-    summary.missedTasks,
-    summary.pendingWorkers,
-    summary.todayNotifications,
-    summary.lowStockMaterials,
-    1,
-  );
-  const maxPortfolioValue = Math.max(summary.equipment, summary.materials, summary.lowStockMaterials, 1);
+  const maxPlanValue = Math.max(summary.dueToday, summary.dueNext7Days, summary.dueNext30Days, summary.shutdownTasks, 1);
+  const maxAssetValue = Math.max(summary.equipment, summary.materials, summary.lowStockMaterials, 1);
 
   return (
     <AppShell
       actions={
         <form action={signOutAction}>
-          <button className="rounded-lg border border-[#cbd7e3] bg-white px-3.5 py-2 text-sm font-extrabold text-[#324155] transition hover:border-[#c1121f] hover:text-[#c1121f]">
+          <SubmitButton variant="danger" className="px-3.5 py-2 font-extrabold" pendingText="جاري الخروج">
             خروج
-          </button>
+          </SubmitButton>
         </form>
       }
     >
-      <PageHeader eyebrow="لوحة الإحصائيات" title="مؤشرات الصيانة" />
+      <PageHeader eyebrow="لوحة الإحصائيات" title="مؤشرات الصيانة القادمة" />
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="مهام متأخرة" value={summary.missedTasks} tone="danger" />
-        <MetricCard label="عمال بانتظار الاعتماد" value={summary.pendingWorkers} tone="warning" />
-        <MetricCard label="إشعارات اليوم" value={summary.todayNotifications} />
-        <MetricCard label="الزيوت والمواد" value={summary.materials} />
-        <MetricCard label="المعدات" value={summary.equipment} />
-        <MetricCard label="مواد تحتاج متابعة" value={summary.lowStockMaterials} tone="warning" />
-        <MetricCard label="إجمالي نقاط المتابعة" value={attentionTotal} tone={attentionTotal > 0 ? "warning" : "success"} />
+        <MetricCard label="مستحق اليوم" value={summary.dueToday} tone={summary.dueToday > 0 ? "warning" : "success"} />
+        <MetricCard label="خلال 7 أيام" value={summary.dueNext7Days} />
+        <MetricCard label="خلال 30 يوم" value={summary.dueNext30Days} />
+        <MetricCard label="تحتاج توقف" value={summary.shutdownTasks} tone="danger" />
       </section>
 
-      <section className="mt-5">
+      <section className="mt-5 grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
         <ContentCard>
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-black text-[#0b559f]">أصول الصيانة</p>
-              <h2 className="mt-1 text-xl font-black">المعدات والزيوت والمواد</h2>
+              <p className="text-xs font-black text-[#0b559f]">الخطة القادمة</p>
+              <h2 className="mt-1 text-xl font-black">توزيع الاستحقاقات</h2>
             </div>
             <p className="rounded-md bg-[#f4f7fa] px-3 py-1 text-sm font-black text-[#516173]">
-              {formatNumber(portfolioTotal)}
+              {formatNumber(summary.dueNext30Days)}
             </p>
           </div>
 
-          <div className="mt-6 grid gap-4">
-            <HorizontalBar label="المعدات" value={summary.equipment} max={maxPortfolioValue} tone="neutral" />
-            <HorizontalBar label="الزيوت والمواد" value={summary.materials} max={maxPortfolioValue} tone="success" />
-            <HorizontalBar label="مواد تحتاج متابعة" value={summary.lowStockMaterials} max={maxPortfolioValue} tone="warning" />
-          </div>
-        </ContentCard>
-      </section>
-
-      <section className="mt-5 grid gap-5 lg:grid-cols-2">
-        <ContentCard>
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-black text-[#0b559f]">حجم المتابعة</p>
-              <h2 className="mt-1 text-xl font-black">مقارنة المؤشرات</h2>
-            </div>
-          </div>
           <div className="mt-6 flex h-72 items-end gap-3 rounded-lg border border-[#e2e8ef] bg-[#f8fafc] p-4">
-            <VerticalBar label="متأخرة" value={summary.missedTasks} max={maxDailyValue} tone="danger" />
-            <VerticalBar label="اعتماد" value={summary.pendingWorkers} max={maxDailyValue} tone="warning" />
-            <VerticalBar label="إشعارات" value={summary.todayNotifications} max={maxDailyValue} tone="neutral" />
-            <VerticalBar label="مواد" value={summary.lowStockMaterials} max={maxDailyValue} tone="success" />
+            <VerticalBar label="اليوم" value={summary.dueToday} max={maxPlanValue} tone="warning" />
+            <VerticalBar label="7 أيام" value={summary.dueNext7Days} max={maxPlanValue} tone="neutral" />
+            <VerticalBar label="30 يوم" value={summary.dueNext30Days} max={maxPlanValue} tone="success" />
+            <VerticalBar label="توقف" value={summary.shutdownTasks} max={maxPlanValue} tone="danger" />
           </div>
         </ContentCard>
 
         <ContentCard>
           <div>
-            <p className="text-xs font-black text-[#0b559f]">مصفوفة المتابعة</p>
-            <h2 className="mt-1 text-xl font-black">تركيز الإدارة</h2>
+            <p className="text-xs font-black text-[#0b559f]">الأصول والمواد</p>
+            <h2 className="mt-1 text-xl font-black">مؤشرات المخزون والمعدات</h2>
           </div>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <StatTile label="المهام المتأخرة" value={summary.missedTasks} tone="danger" />
-            <StatTile label="حسابات العمال المعلقة" value={summary.pendingWorkers} tone="warning" />
-            <StatTile label="تنبيهات المواد" value={summary.lowStockMaterials} tone="warning" />
+
+          <div className="mt-6 grid gap-4">
+            <HorizontalBar label="المعدات" value={summary.equipment} max={maxAssetValue} tone="neutral" />
+            <HorizontalBar label="الزيوت والمواد" value={summary.materials} max={maxAssetValue} tone="success" />
+            <HorizontalBar label="مواد تحتاج متابعة" value={summary.lowStockMaterials} max={maxAssetValue} tone="warning" />
+            <HorizontalBar label="عمال بانتظار الاعتماد" value={summary.pendingWorkers} max={maxAssetValue} tone="danger" />
+          </div>
+        </ContentCard>
+      </section>
+
+      <section className="mt-5">
+        <ContentCard>
+          <div>
+            <p className="text-xs font-black text-[#0b559f]">نطاق المتابعة</p>
+            <h2 className="mt-1 text-xl font-black">ملخص سريع</h2>
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <StatTile label="مستحق اليوم" value={summary.dueToday} tone="warning" />
+            <StatTile label="قادم خلال أسبوع" value={summary.dueNext7Days} tone="neutral" />
+            <StatTile label="قادم خلال شهر" value={summary.dueNext30Days} tone="success" />
+            <StatTile label="مهام أثناء التوقف" value={summary.shutdownTasks} tone="danger" />
           </div>
         </ContentCard>
       </section>
@@ -128,7 +119,7 @@ function HorizontalBar({ label, value, max, tone }: { label: string; value: numb
 }
 
 function VerticalBar({ label, value, max, tone }: { label: string; value: number; max: number; tone: Tone }) {
-  const ratio = Math.max(5, percentage(value, max));
+  const ratio = Math.max(value > 0 ? 8 : 0, percentage(value, max));
   const color = toneColor(tone);
 
   return (
@@ -137,7 +128,7 @@ function VerticalBar({ label, value, max, tone }: { label: string; value: number
         {formatNumber(value)}
       </span>
       <div className="flex h-44 w-full items-end justify-center rounded-md bg-white px-2 py-2">
-        <div className="w-full max-w-12 rounded-t-md" style={{ height: `${ratio}%`, backgroundColor: color }} />
+        <div className="w-full max-w-12 rounded-t-md transition-all" style={{ height: `${ratio}%`, backgroundColor: color }} />
       </div>
       <span className="w-full truncate text-center text-xs font-bold text-[#607086]">{label}</span>
     </div>

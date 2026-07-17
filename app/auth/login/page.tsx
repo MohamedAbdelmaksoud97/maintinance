@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { signInAction } from "@/app/auth/actions";
 import { AuthShell } from "@/app/ui/shell";
+import { SubmitButton } from "@/app/ui/submit-button";
 
 export default async function LoginPage({
   searchParams,
@@ -18,9 +19,9 @@ export default async function LoginPage({
       <form action={signInAction} className="mt-6 space-y-4">
         <Field label="البريد الإلكتروني" name="email" type="email" />
         <Field label="كلمة المرور" name="password" type="password" />
-        <button className="w-full rounded-lg bg-[#0b559f] px-4 py-3 text-sm font-black text-white shadow-sm transition hover:bg-[#0a3f78]">
+        <SubmitButton className="w-full" pendingText="جاري الدخول">
           دخول النظام
-        </button>
+        </SubmitButton>
       </form>
       <div className="mt-5 flex items-center justify-between gap-3 text-sm">
         <Link href="/auth/register" className="font-extrabold text-[#0b559f]">

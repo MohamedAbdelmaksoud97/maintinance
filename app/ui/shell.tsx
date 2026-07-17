@@ -155,8 +155,8 @@ export function NavButton({
       href={href}
       className={
         variant === "primary"
-          ? "rounded-lg bg-[#0b559f] px-3.5 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-[#0a3f78]"
-          : "rounded-lg border border-[#cbd7e3] bg-white px-3.5 py-2 text-sm font-extrabold text-[#324155] transition hover:border-[#0b559f] hover:text-[#0b559f]"
+          ? "rounded-lg bg-[#0b559f] px-3.5 py-2 text-sm font-extrabold text-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:bg-[#0a3f78] hover:shadow-md active:translate-y-0"
+          : "rounded-lg border border-[#cbd7e3] bg-white px-3.5 py-2 text-sm font-extrabold text-[#324155] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-[#0b559f] hover:text-[#0b559f] hover:shadow-md active:translate-y-0"
       }
     >
       {children}

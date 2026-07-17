@@ -12,6 +12,10 @@ const zeroSummary: DashboardSummary = {
   invalidRows: 0,
   unassignedTasks: 0,
   missedTasks: 0,
+  dueToday: 0,
+  dueNext7Days: 0,
+  dueNext30Days: 0,
+  shutdownTasks: 0,
   materials: 0,
   equipment: 0,
   pendingWorkers: 0,
@@ -28,7 +32,9 @@ async function countRows(
     | { kind: "missed"; today: string }
     | { kind: "pendingWorkers" }
     | { kind: "notificationDate"; start: string; end: string }
-    | { kind: "lowStock" },
+    | { kind: "lowStock" }
+    | { kind: "scheduledRange"; start: string; end?: string }
+    | { kind: "shutdownTasks"; start: string },
   oldStatusId?: string,
 ) {
   let query = supabase.from(table).select("*", { count: "exact", head: true });
@@ -55,6 +61,15 @@ async function countRows(
   }
   if (filter?.kind === "lowStock") {
     query = query.in("stock_status", ["LOW", "REORDER"]);
+  }
+  if (filter?.kind === "scheduledRange") {
+    query = query.gte("scheduled_date", filter.start);
+    if (filter.end) {
+      query = query.lt("scheduled_date", filter.end);
+    }
+  }
+  if (filter?.kind === "shutdownTasks") {
+    query = query.gte("scheduled_date", filter.start).eq("execution_condition", "shutdown");
   }
 
   const { count, error } = await query;
@@ -86,6 +101,8 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
   const supabase = createClient(cookieStore);
   const today = getSaudiToday();
   const tomorrowSaudi = getSaudiDate(1);
+  const next7Days = getSaudiDate(7);
+  const next30Days = getSaudiDate(30);
   const { data: oldStatus } = await supabase.from("task_statuses").select("id").eq("code", "OLD").maybeSingle();
   const oldStatusId = oldStatus?.id;
 
@@ -98,6 +115,10 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     invalidRows,
     unassignedTasks,
     missedTasks,
+    dueToday,
+    dueNext7Days,
+    dueNext30Days,
+    shutdownTasks,
     materials,
     equipment,
     pendingWorkers,
@@ -112,6 +133,10 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     countRows(supabase, "imported_rows", { kind: "quality", value: "INVALID" }),
     countRows(supabase, "planned_tasks", { kind: "unassigned" }, oldStatusId),
     countRows(supabase, "planned_tasks", { kind: "missed", today }, oldStatusId),
+    countRows(supabase, "planned_tasks", { kind: "scheduledRange", start: today, end: tomorrowSaudi }, oldStatusId),
+    countRows(supabase, "planned_tasks", { kind: "scheduledRange", start: today, end: next7Days }, oldStatusId),
+    countRows(supabase, "planned_tasks", { kind: "scheduledRange", start: today, end: next30Days }, oldStatusId),
+    countRows(supabase, "planned_tasks", { kind: "shutdownTasks", start: today }, oldStatusId),
     countRows(supabase, "materials"),
     countMainEquipment(supabase),
     countRows(supabase, "profiles", { kind: "pendingWorkers" }),
@@ -133,6 +158,10 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     invalidRows,
     unassignedTasks,
     missedTasks,
+    dueToday,
+    dueNext7Days,
+    dueNext30Days,
+    shutdownTasks,
     materials,
     equipment,
     pendingWorkers,

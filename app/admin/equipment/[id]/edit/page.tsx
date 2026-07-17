@@ -1,5 +1,6 @@
 import { upsertEquipmentAction } from "@/app/auth/actions";
 import { AppShell, ContentCard, NavButton, PageHeader } from "@/app/ui/shell";
+import { SubmitButton } from "@/app/ui/submit-button";
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
 import Link from "next/link";
@@ -47,8 +48,8 @@ export default async function EquipmentEditPage({ params }: { params: Promise<{ 
           <Field name="name" label="اسم المعدة" defaultValue={equipment.name ?? ""} required />
           <Field name="description" label="الوصف" defaultValue={equipment.description ?? ""} />
           <div className="flex gap-2 md:col-span-2">
-            <button className="rounded-lg bg-[#0b559f] px-5 py-3 text-sm font-black text-white shadow-sm">حفظ التعديل</button>
-            <Link href={`/admin/equipment/${equipment.id}`} className="rounded-lg border border-[#cbd7e3] px-5 py-3 text-sm font-black text-[#324155]">
+            <SubmitButton className="px-5" pendingText="جاري الحفظ">حفظ التعديل</SubmitButton>
+            <Link href={`/admin/equipment/${equipment.id}`} className="rounded-lg border border-[#cbd7e3] px-5 py-3 text-sm font-black text-[#324155] transition hover:-translate-y-0.5 hover:border-[#0b559f] hover:text-[#0b559f] hover:shadow-md active:translate-y-0">
               إلغاء
             </Link>
           </div>

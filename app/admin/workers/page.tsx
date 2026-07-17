@@ -1,5 +1,6 @@
 import { approveWorkerAction } from "@/app/auth/actions";
 import { AppShell, ContentCard, MetricCard, NavButton, PageHeader, StatusBadge } from "@/app/ui/shell";
+import { SubmitButton } from "@/app/ui/submit-button";
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
 
@@ -8,11 +9,18 @@ type WorkerRow = {
   full_name: string;
   employee_code: string | null;
   is_active: boolean;
+  worker_area_assignments: { area_id: string; areas: { name: string | null; code: string | null } | null }[];
   profiles: {
     id: string;
     email: string | null;
     approval_status: string;
   } | null;
+};
+
+type AreaRow = {
+  id: string;
+  name: string;
+  code: string;
 };
 
 export default async function WorkersPage({
@@ -22,13 +30,17 @@ export default async function WorkersPage({
 }) {
   const message = (await searchParams).message;
   const supabase = createClient(await cookies());
-  const { data } = await supabase
-    .from("workers")
-    .select("id,full_name,employee_code,is_active,profiles(id,email,approval_status)")
-    .order("created_at", { ascending: false })
-    .limit(100);
+  const [{ data }, { data: areaRows }] = await Promise.all([
+    supabase
+      .from("workers")
+      .select("id,full_name,employee_code,is_active,profiles(id,email,approval_status),worker_area_assignments(area_id,areas(name,code))")
+      .order("created_at", { ascending: false })
+      .limit(100),
+    supabase.from("areas").select("id,name,code").eq("is_active", true).order("name"),
+  ]);
 
   const workers = (data ?? []) as unknown as WorkerRow[];
+  const areas = (areaRows ?? []) as unknown as AreaRow[];
   const pending = workers.filter((worker) => worker.profiles?.approval_status === "pending").length;
   const approved = workers.filter((worker) => worker.profiles?.approval_status === "approved").length;
 
@@ -60,34 +72,57 @@ export default async function WorkersPage({
                 <th className="py-3 font-black">العامل</th>
                 <th className="py-3 font-black">البريد</th>
                 <th className="py-3 font-black">كود العامل</th>
+                <th className="py-3 font-black">المناطق المسؤولة</th>
                 <th className="py-3 font-black">حالة الاعتماد</th>
                 <th className="py-3 font-black">إجراء</th>
               </tr>
             </thead>
             <tbody>
-              {workers.map((worker) => (
-                <tr key={worker.id} className="border-b border-[#edf1f5]">
-                  <td className="py-3 font-black">{worker.full_name}</td>
-                  <td className="py-3 text-[#607086]">{worker.profiles?.email ?? "-"}</td>
-                  <td className="py-3 text-[#607086]">{worker.employee_code ?? "-"}</td>
-                  <td className="py-3">
-                    <Status status={worker.profiles?.approval_status ?? "pending"} />
-                  </td>
-                  <td className="py-3">
-                    {worker.profiles?.id ? (
-                      <div className="flex gap-2">
-                        <ApprovalButton profileId={worker.profiles.id} approve label="اعتماد" />
-                        <ApprovalButton profileId={worker.profiles.id} approve={false} label="رفض" />
-                      </div>
-                    ) : (
-                      "-"
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {workers.map((worker) => {
+                const assignedAreaIds = new Set(worker.worker_area_assignments?.map((assignment) => assignment.area_id) ?? []);
+                const status = worker.profiles?.approval_status ?? "pending";
+
+                return (
+                  <tr key={worker.id} className="border-b border-[#edf1f5] align-top">
+                    <td className="py-3 font-black">{worker.full_name}</td>
+                    <td className="py-3 text-[#607086]">{worker.profiles?.email ?? "-"}</td>
+                    <td className="py-3 text-[#607086]">{worker.employee_code ?? "-"}</td>
+                    <td className="py-3">
+                      {worker.profiles?.id ? (
+                        <form id={`worker-${worker.id}-areas`} action={approveWorkerAction} className="grid gap-2 sm:grid-cols-2">
+                          <input type="hidden" name="profile_id" value={worker.profiles.id} />
+                          <input type="hidden" name="worker_id" value={worker.id} />
+                          {areas.map((area) => (
+                            <label key={area.id} className="flex items-center gap-2 rounded-lg border border-[#dbe3ea] bg-[#f8fafc] px-3 py-2 text-xs font-black text-[#324155]">
+                              <input name="area_ids" type="checkbox" value={area.id} defaultChecked={assignedAreaIds.has(area.id)} className="h-4 w-4 accent-[#0b559f]" />
+                              <span>{area.name}</span>
+                            </label>
+                          ))}
+                          {!areas.length ? <span className="text-xs font-bold text-[#607086]">لا توجد مناطق نشطة</span> : null}
+                        </form>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                    <td className="py-3">
+                      <Status status={status} />
+                    </td>
+                    <td className="py-3">
+                      {worker.profiles?.id ? (
+                        <div className="flex flex-wrap gap-2">
+                          <ApprovalButton formId={`worker-${worker.id}-areas`} approve label={status === "approved" ? "حفظ المناطق" : "اعتماد وحفظ"} />
+                          <ApprovalButton formId={`worker-${worker.id}-areas`} approve={false} label="رفض" />
+                        </div>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
               {!workers.length ? (
                 <tr>
-                  <td colSpan={5} className="py-6 text-center font-semibold text-[#607086]">
+                  <td colSpan={6} className="py-6 text-center font-semibold text-[#607086]">
                     لا توجد حسابات عمال ظاهرة للمستخدم الحالي.
                   </td>
                 </tr>
@@ -101,28 +136,24 @@ export default async function WorkersPage({
 }
 
 function ApprovalButton({
-  profileId,
+  formId,
   approve,
   label,
 }: {
-  profileId: string;
+  formId: string;
   approve: boolean;
   label: string;
 }) {
   return (
-    <form action={approveWorkerAction}>
-      <input type="hidden" name="profile_id" value={profileId} />
-      <input type="hidden" name="approve" value={String(approve)} />
-      <button
-        className={
-          approve
-            ? "rounded-lg bg-[#207a45] px-3 py-2 text-xs font-black text-white shadow-sm"
-            : "rounded-lg bg-[#c1121f] px-3 py-2 text-xs font-black text-white shadow-sm"
-        }
-      >
-        {label}
-      </button>
-    </form>
+    <SubmitButton
+      form={formId}
+      name="approve"
+      value={String(approve)}
+      className={`px-3 py-2 text-xs ${approve ? "bg-[#207a45] hover:bg-[#176333]" : "bg-[#c1121f] hover:bg-[#9f0f19]"}`}
+      pendingText="جاري الحفظ"
+    >
+      {label}
+    </SubmitButton>
   );
 }
 

@@ -9,6 +9,10 @@ export type DashboardSummary = {
   invalidRows: number;
   unassignedTasks: number;
   missedTasks: number;
+  dueToday: number;
+  dueNext7Days: number;
+  dueNext30Days: number;
+  shutdownTasks: number;
   materials: number;
   equipment: number;
   pendingWorkers: number;

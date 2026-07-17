@@ -43,18 +43,10 @@ export function NavigationProgress() {
       startPending(`${url.pathname}${url.search}`);
     }
 
-    function handleSubmit(event: SubmitEvent) {
-      if (!event.defaultPrevented) {
-        startPending(`${window.location.pathname}${window.location.search}#submit-${Date.now()}`);
-      }
-    }
-
     document.addEventListener("click", handleClick, true);
-    document.addEventListener("submit", handleSubmit, true);
 
     return () => {
       document.removeEventListener("click", handleClick, true);
-      document.removeEventListener("submit", handleSubmit, true);
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
@@ -69,10 +61,6 @@ export function NavigationProgress() {
     <div className="pointer-events-none fixed inset-x-0 top-0 z-[80]">
       <div className="h-1 overflow-hidden bg-[#dbe8f6]">
         <div className="h-full w-1/2 animate-[navigation-bar_1.1s_ease-in-out_infinite] rounded-full bg-[#0b559f]" />
-      </div>
-      <div className="fixed left-5 top-5 hidden items-center gap-2 rounded-lg border border-[#dbe3ea] bg-white/95 px-3 py-2 text-sm font-black text-[#0b559f] shadow-lg backdrop-blur sm:flex">
-        <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#bdd6ee] border-t-[#0b559f]" />
-        تحميل الصفحة
       </div>
     </div>
   );

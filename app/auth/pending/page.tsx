@@ -1,5 +1,6 @@
 import { signOutAction } from "@/app/auth/actions";
 import { AuthShell } from "@/app/ui/shell";
+import { SubmitButton } from "@/app/ui/submit-button";
 
 export default function PendingPage() {
   return (
@@ -8,9 +9,9 @@ export default function PendingPage() {
       description="تم تسجيل الحساب بنجاح، لكن لا يمكن استخدام النظام قبل اعتماد المدير. بعد الاعتماد ستظهر المهام اليومية حسب الصلاحية."
     >
       <form action={signOutAction} className="mt-6">
-        <button className="w-full rounded-lg bg-[#0b559f] px-4 py-3 text-sm font-black text-white shadow-sm transition hover:bg-[#0a3f78]">
+        <SubmitButton className="w-full" pendingText="جاري الخروج">
           تسجيل الخروج
-        </button>
+        </SubmitButton>
       </form>
     </AuthShell>
   );

@@ -1,5 +1,6 @@
 import { upsertOilAction } from "@/app/auth/actions";
 import { AppShell, ContentCard, MetricCard, PageHeader, StatusBadge } from "@/app/ui/shell";
+import { SubmitButton } from "@/app/ui/submit-button";
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
 import Link from "next/link";
@@ -73,7 +74,7 @@ export default async function OilsPage({
             placeholder="ابحث باسم الزيت أو الكود"
             className="rounded-lg border border-[#cbd7e3] bg-white px-3 py-3 font-semibold outline-none transition focus:border-[#0b559f] focus:ring-4 focus:ring-[#0b559f]/10"
           />
-          <button className="rounded-lg bg-[#0b559f] px-5 py-3 text-sm font-black text-white shadow-sm">بحث</button>
+          <SubmitButton className="px-5" pendingText="جاري البحث">بحث</SubmitButton>
         </form>
       </ContentCard>
 
@@ -87,9 +88,9 @@ export default async function OilsPage({
           <Field name="unit" label="الوحدة" defaultValue="L" />
           <Field name="minimum_stock" label="الحد الأدنى" type="number" />
           <Field name="reorder_level" label="حد إعادة الطلب" type="number" />
-          <button className="self-end rounded-lg bg-[#0b559f] px-4 py-3 text-sm font-black text-white shadow-sm">
+          <SubmitButton className="self-end" pendingText="جاري الإضافة">
             إضافة
-          </button>
+          </SubmitButton>
         </form>
       </ContentCard>
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { signUpAction } from "@/app/auth/actions";
 import { AuthShell } from "@/app/ui/shell";
+import { SubmitButton } from "@/app/ui/submit-button";
 
 export default async function RegisterPage({
   searchParams,
@@ -19,9 +20,9 @@ export default async function RegisterPage({
         <Field label="اسم العامل" name="full_name" type="text" />
         <Field label="البريد الإلكتروني" name="email" type="email" />
         <Field label="كلمة المرور" name="password" type="password" />
-        <button className="w-full rounded-lg bg-[#0b559f] px-4 py-3 text-sm font-black text-white shadow-sm transition hover:bg-[#0a3f78]">
+        <SubmitButton className="w-full" pendingText="جاري إنشاء الحساب">
           إنشاء الحساب
-        </button>
+        </SubmitButton>
       </form>
       <Link href="/auth/login" className="mt-5 block text-sm font-extrabold text-[#0b559f]">
         لدي حساب بالفعل
