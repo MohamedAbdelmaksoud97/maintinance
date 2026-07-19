@@ -11,9 +11,21 @@ type Equipment = {
   equipment_code: string;
   name: string | null;
   description: string | null;
+  plan_identity_key: string | null;
   area_id: string | null;
   original_values: Record<string, unknown> | null;
   areas: { name: string } | null;
+  production_lines: { line_code: string | null; name: string | null } | null;
+};
+
+type EquipmentPoint = {
+  equipment_id: string;
+  point_name: string | null;
+  part_description: string | null;
+  quantity: number | null;
+  quantity_unit: string | null;
+  maintenance_work_types: { code: string | null; name: string | null } | null;
+  materials: { name: string | null; unit: string | null } | null;
 };
 
 type Zone = {
@@ -21,6 +33,8 @@ type Zone = {
   label: string;
   count: number;
 };
+
+type SupabaseClient = ReturnType<typeof createClient>;
 
 export default async function EquipmentPage({
   searchParams,
@@ -32,11 +46,14 @@ export default async function EquipmentPage({
   const supabase = createClient(await cookies());
   const { data: equipment } = await supabase
     .from("equipment")
-    .select("id,equipment_code,name,description,area_id,original_values,areas(name)")
+    .select("id,equipment_code,name,description,plan_identity_key,area_id,original_values,areas(name),production_lines(line_code,name)")
     .eq("is_active", true)
-    .order("equipment_code");
+    .order("equipment_code")
+    .order("id");
 
   const equipmentRows = ((equipment ?? []) as unknown as Equipment[]).filter((item) => isMainEquipment(item));
+  const pointRows = await fetchActivePoints(supabase);
+  const pointsByEquipment = groupPointsByEquipment(pointRows);
   const zones = buildZones(equipmentRows);
   const selectedZone = zones.some((zone) => zone.key === params.zone) ? params.zone ?? zones[0]?.key : zones[0]?.key;
   const searchedRows = searchTerm
@@ -52,8 +69,8 @@ export default async function EquipmentPage({
     <AppShell>
       <PageHeader
         eyebrow="المعدات"
-        title="إدارة المعدات الحالية"
-        description="القائمة هنا مبنية على المصدر الرئيسي للمعدات، ومقسمة حسب المكان لتسهيل المراجعة والتعديل."
+        title="معدات خطة الصيانة"
+        description="كل معدة تظهر مرة واحدة، وداخلها ملخص نقاط الفحص والتشحيم والتزييت المطلوبة."
         action={<StatusBadge>{equipmentRows.length.toLocaleString("ar-EG")} معدة</StatusBadge>}
       />
 
@@ -75,7 +92,7 @@ export default async function EquipmentPage({
             <h2 className="text-lg font-black">البحث عن معدة</h2>
             <p className="mt-1 text-sm font-semibold text-[#607086]">اكتب كود المعدة للوصول السريع إلى صفحتها.</p>
           </div>
-          <StatusBadge tone="neutral">التعديل يتم من صفحة مستقلة</StatusBadge>
+          <StatusBadge tone="neutral">كل كارت يمثل معدة واحدة</StatusBadge>
         </div>
         <form className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
           <input
@@ -101,7 +118,7 @@ export default async function EquipmentPage({
 
       <section className="mt-5 grid gap-3">
         {visibleRows.map((item) => (
-          <ReadEquipmentCard key={item.id} item={item} zoneKeyValue={selectedZone ?? ""} />
+          <ReadEquipmentCard key={item.id} item={item} points={pointsByEquipment.get(item.id) ?? []} zoneKeyValue={selectedZone ?? ""} />
         ))}
         {!visibleRows.length ? (
           <ContentCard>
@@ -113,24 +130,28 @@ export default async function EquipmentPage({
   );
 }
 
-function ReadEquipmentCard({ item, zoneKeyValue }: { item: Equipment; zoneKeyValue: string }) {
+function ReadEquipmentCard({ item, points, zoneKeyValue }: { item: Equipment; points: EquipmentPoint[]; zoneKeyValue: string }) {
   return (
     <ContentCard>
-      <div className="grid gap-4 lg:grid-cols-[180px_1fr_1fr_auto] lg:items-center">
+      <div className="grid gap-4 lg:grid-cols-[160px_1fr_1fr_1fr_auto] lg:items-center">
         <div>
           <p className="text-xs font-black text-[#607086]">كود المعدة</p>
           <Link href={`/admin/equipment/${item.id}`} className="mt-1 inline-block text-lg font-black text-[#0b559f] hover:underline">
             {item.equipment_code}
           </Link>
         </div>
-        <Info label="اسم المعدة" value={item.name ?? "بدون اسم"} />
-        <Info label="الوصف" value={item.description ?? "لا يوجد وصف"} />
+        <Info label="اسم المعدة" value={item.name ?? "لايوجد"} />
+        <Info label="المكان والخط" value={zoneLabel(item)} />
+        <Info label="الأعمال الداخلية" value={workSummary(points)} />
         <Link
           href={`/admin/equipment/${item.id}/edit?zone=${encodeURIComponent(zoneKeyValue)}`}
           className="rounded-lg border border-[#0b559f] px-4 py-2 text-center text-sm font-black text-[#0b559f] transition hover:bg-[#eef6ff]"
         >
           تعديل
         </Link>
+      </div>
+      <div className="mt-4 border-t border-[#e2e8ef] pt-4">
+        <Info label="الأجزاء والنقاط" value={partsPreview(points)} />
       </div>
     </ContentCard>
   );
@@ -161,12 +182,13 @@ function TabLink({ href, active, children }: { href: string; active: boolean; ch
 }
 
 function isMainEquipment(item: Equipment) {
-  return item.original_values?.source_mode === "master_equipment" || item.original_values?.source_mode === "manual_equipment";
+  return item.original_values?.equipment_identity === "physical_equipment" || item.original_values?.source_mode === "manual_equipment";
 }
 
 function zoneLabel(item: Equipment) {
-  const value = item.original_values?.master_line;
-  return typeof value === "string" && value.trim() ? value.trim() : "بدون مكان";
+  const area = item.areas?.name ?? textValue(item.original_values?.area_code) ?? "لايوجد";
+  const line = item.production_lines?.line_code ?? textValue(item.original_values?.line_code);
+  return line ? `${area} - Line ${line}` : area;
 }
 
 function zoneKey(item: Equipment) {
@@ -183,4 +205,77 @@ function buildZones(rows: Equipment[]): Zone[] {
   }
 
   return [...counts.values()].sort((a, b) => a.label.localeCompare(b.label, "ar"));
+}
+
+function textValue(value: unknown) {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text || null;
+}
+
+async function fetchActivePoints(supabase: SupabaseClient) {
+  const rows: EquipmentPoint[] = [];
+  const pageSize = 1000;
+
+  for (let from = 0; ; from += pageSize) {
+    const { data } = await supabase
+      .from("maintenance_points")
+      .select("equipment_id,point_name,part_description,quantity,quantity_unit,maintenance_work_types(code,name),materials(name,unit)")
+      .eq("is_active", true)
+      .range(from, from + pageSize - 1);
+    const page = (data ?? []) as unknown as EquipmentPoint[];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+
+  return rows;
+}
+
+function groupPointsByEquipment(points: EquipmentPoint[]) {
+  const grouped = new Map<string, EquipmentPoint[]>();
+  for (const point of points) {
+    grouped.set(point.equipment_id, [...(grouped.get(point.equipment_id) ?? []), point]);
+  }
+  return grouped;
+}
+
+function workSummary(points: EquipmentPoint[]) {
+  if (!points.length) return "لايوجد";
+  const counts = new Map<string, number>();
+  for (const point of points) {
+    const code = point.maintenance_work_types?.code ?? "unknown";
+    counts.set(code, (counts.get(code) ?? 0) + 1);
+  }
+  const labels = [
+    countLabel("فحص", counts.get("inspection") ?? 0),
+    countLabel("تشحيم", counts.get("greasing") ?? 0),
+    countLabel("زيت", counts.get("oil_change") ?? 0),
+    countLabel("تغيير شحم", counts.get("grease_change") ?? 0),
+  ].filter(Boolean);
+  return labels.join(" · ") || "لايوجد";
+}
+
+function countLabel(label: string, count: number) {
+  return count > 0 ? `${label}: ${count.toLocaleString("ar-EG")}` : "";
+}
+
+function partsPreview(points: EquipmentPoint[]) {
+  const labels = uniqueLabels(
+    points.map((point) => point.part_description?.trim() || point.point_name?.trim() || point.materials?.name?.trim() || null),
+  );
+  if (!labels.length) return "لايوجد";
+  const visible = labels.slice(0, 6).join("، ");
+  const remaining = labels.length - 6;
+  return remaining > 0 ? `${visible}، +${remaining.toLocaleString("ar-EG")}` : visible;
+}
+
+function uniqueLabels(values: Array<string | null>) {
+  const seen = new Set<string>();
+  const labels: string[] = [];
+  for (const value of values) {
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    labels.push(value);
+  }
+  return labels;
 }

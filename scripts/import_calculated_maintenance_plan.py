@@ -353,6 +353,8 @@ def build_operation(
     running_hours = number(row[6] if len(row) > 6 else None)
 
     if material_kind == "oil":
+        if not part_description:
+            part_description = equipment_name
         material_name = text(row[4] if len(row) > 4 else None)
         quantity = number(row[5] if len(row) > 5 else None)
         point_name = part_description
@@ -518,17 +520,81 @@ def collect_operations(paths: list[Path], as_of: date, windows: list[ShutdownWin
     return operations
 
 
-def load_equipment_lookup(conn: psycopg.Connection) -> dict[str, str]:
-    rows = conn.execute("select id, equipment_code, is_active, original_values from equipment").fetchall()
-    preferred: dict[str, str] = {}
-    fallback: dict[str, str] = {}
-    for row in rows:
-        key = normalize_code(row["equipment_code"])
-        fallback.setdefault(key, row["id"])
-        values = row["original_values"] or {}
-        if row["is_active"] and values.get("source_mode") in {"master_equipment", "manual_equipment"}:
-            preferred[key] = row["id"]
-    return {**fallback, **preferred}
+def equipment_identity_key(op: Operation) -> str:
+    return "|".join(
+        [
+            normalize_code(op.area_code),
+            normalize_code(op.equipment_code),
+        ]
+    )
+
+
+def maintenance_point_identity_key(op: Operation) -> str:
+    return "|".join(
+        [
+            equipment_identity_key(op),
+            normalize_code(op.work_type_code),
+            normalize_code(op.part_description or ""),
+            normalize_code(op.point_name or ""),
+            normalize_code(op.material_name or ""),
+        ]
+    )
+
+
+def operation_score(op: Operation, target_year: int) -> tuple[int, int, int]:
+    values = [
+        op.equipment_name,
+        op.line_code,
+        op.part_description,
+        op.point_name,
+        op.material_name,
+        op.quantity,
+        op.running_hours_per_day,
+        op.frequency_hours,
+        op.frequency_days,
+        op.last_date,
+        op.scheduled_date,
+    ]
+    complete_score = 1 if op.data_quality_status == "COMPLETE" else 0
+    year_score = 1 if op.plan_year == target_year else 0
+    data_score = sum(value is not None for value in values)
+    return (year_score, complete_score, data_score)
+
+
+def select_operational_operations(operations: list[Operation], target_year: int) -> list[Operation]:
+    target_year_operations = [op for op in operations if op.plan_year == target_year]
+    candidates = target_year_operations or operations
+    selected: dict[str, Operation] = {}
+
+    for op in candidates:
+        key = maintenance_point_identity_key(op)
+        current = selected.get(key)
+        if current is None or operation_score(op, target_year) > operation_score(current, target_year):
+            selected[key] = op
+
+    return list(selected.values())
+
+
+def preferred_equipment_name(existing: str | None, candidate: str | None) -> str | None:
+    if not existing:
+        return candidate
+    if not candidate:
+        return existing
+    existing_text = existing.strip()
+    candidate_text = candidate.strip()
+    if not candidate_text:
+        return existing_text
+    if not existing_text:
+        return candidate_text
+
+    detail_terms = ("GEAR BOX", "FLUID COUPLING", "HYDRAULIC", "MOTOR", "BEARING")
+    existing_is_detail = any(term in existing_text.upper() for term in detail_terms)
+    candidate_is_detail = any(term in candidate_text.upper() for term in detail_terms)
+    if existing_is_detail and not candidate_is_detail:
+        return candidate_text
+    if candidate_is_detail and not existing_is_detail:
+        return existing_text
+    return candidate_text if len(candidate_text) < len(existing_text) else existing_text
 
 
 def material_code(kind: str, name: str) -> str:
@@ -553,8 +619,6 @@ def apply_to_database(database_url: str, operations: list[Operation], windows: l
         status_id = conn.execute("select id from task_statuses where code = 'NEEDS_ASSIGNMENT'").fetchone()["id"]
         old_status_id = conn.execute("select id from task_statuses where code = 'OLD'").fetchone()["id"]
         assignment_status_id = conn.execute("select id from assignment_statuses where code = 'UNASSIGNED'").fetchone()["id"]
-        equipment_lookup = load_equipment_lookup(conn)
-
         area_rows = {}
         line_rows = {}
         material_rows = {}
@@ -589,19 +653,31 @@ def apply_to_database(database_url: str, operations: list[Operation], windows: l
                 line_id = line_lookup.get((area_id, op.line_code), stable_id("line", op.area_code, op.line_code))
                 line_rows[line_id] = (line_id, area_id, op.line_code, f"Line {op.line_code}")
 
-            equipment_id = equipment_lookup.get(normalize_code(op.equipment_code))
-            if not equipment_id:
-                equipment_id = stable_id("equipment", op.area_code, op.equipment_code)
-                equipment_rows[equipment_id] = (
-                    equipment_id,
-                    area_id,
-                    line_id,
-                    op.equipment_code,
-                    op.equipment_name,
-                    op.part_description,
-                    Jsonb({"source_mode": "calculated_plan_equipment", "line_code": op.line_code}),
-                    op.data_quality_status,
-                )
+            equipment_key = equipment_identity_key(op)
+            equipment_id = stable_id("equipment", "physical", equipment_key)
+            existing_equipment = equipment_rows.get(equipment_id)
+            equipment_name = preferred_equipment_name(existing_equipment[4] if existing_equipment else None, op.equipment_name)
+            equipment_rows[equipment_id] = (
+                equipment_id,
+                area_id,
+                None,
+                op.equipment_code,
+                equipment_name,
+                None,
+                equipment_key,
+                Jsonb(
+                    {
+                        "source_mode": "calculated_plan_equipment",
+                        "equipment_identity": "physical_equipment",
+                        "plan_identity_key": equipment_key,
+                        "area_code": op.area_code,
+                        "plan_year": op.plan_year,
+                        "equipment_code": op.equipment_code,
+                        "equipment_name": equipment_name,
+                    }
+                ),
+                op.data_quality_status,
+            )
 
             material_id = None
             if op.material_name:
@@ -617,8 +693,9 @@ def apply_to_database(database_url: str, operations: list[Operation], windows: l
 
             plan_id = stable_id("annual_plan", op.area_code, op.plan_year, op.material_kind, Path(op.source_file).name)
             plan_rows[plan_id] = (plan_id, area_id, op.plan_year, op.material_kind, op.source_file)
-            point_id = stable_id("point", op.source_file, op.source_row, op.work_type_code)
-            item_id = stable_id("plan_item", op.source_file, op.source_row, op.work_type_code)
+            point_key = maintenance_point_identity_key(op)
+            point_id = stable_id("point", point_key)
+            item_id = stable_id("plan_item", op.plan_year, point_key)
             original_json = Jsonb(op.original_values)
             point_ids.append(point_id)
             point_rows.append(
@@ -714,15 +791,30 @@ def apply_to_database(database_url: str, operations: list[Operation], windows: l
             )
             execute_many(
                 """
-                insert into equipment (id,area_id,production_line_id,equipment_code,name,description,original_values,data_quality_status)
-                values (%s,%s,%s,%s,%s,%s,%s,%s)
-                on conflict (id) do update set
+                insert into equipment (id,area_id,production_line_id,equipment_code,name,description,plan_identity_key,original_values,data_quality_status)
+                values (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                on conflict (area_id, plan_identity_key) do update set
                   production_line_id=excluded.production_line_id,
-                  name=coalesce(excluded.name, equipment.name),
-                  description=coalesce(excluded.description, equipment.description),
+                  equipment_code=excluded.equipment_code,
+                  name=excluded.name,
+                  description=excluded.description,
+                  original_values=excluded.original_values,
+                  data_quality_status=excluded.data_quality_status,
+                  is_active=true,
                   updated_at=now()
                 """,
                 list(equipment_rows.values()),
+            )
+            conn.execute(
+                """
+                update equipment
+                set is_active = false,
+                    original_values = coalesce(original_values, '{}'::jsonb) || '{"not_in_latest_plan_files": true}'::jsonb,
+                    updated_at = now()
+                where original_values->>'source_mode' = 'calculated_plan_equipment'
+                  and not (id = any(%s::uuid[]))
+                """,
+                (list(equipment_rows.keys()) or ["00000000-0000-0000-0000-000000000000"],),
             )
             execute_many(
                 """
@@ -742,6 +834,8 @@ def apply_to_database(database_url: str, operations: list[Operation], windows: l
                 )
                 values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 on conflict (id) do update set
+                  equipment_id=excluded.equipment_id,
+                  work_type_id=excluded.work_type_id,
                   material_id=excluded.material_id,
                   point_name=excluded.point_name,
                   part_description=excluded.part_description,
@@ -760,6 +854,32 @@ def apply_to_database(database_url: str, operations: list[Operation], windows: l
                   updated_at=now()
                 """,
                 point_rows,
+            )
+            conn.execute(
+                """
+                update planned_tasks
+                set status_id = %s,
+                    updated_at = now(),
+                    original_values = original_values || '{"replaced_by_physical_equipment_import": true}'::jsonb
+                where scheduled_date >= %s
+                  and not (maintenance_point_id = any(%s::uuid[]))
+                  and completed_at is null
+                  and original_values->>'source_mode' in ('calculated_next_due', 'dynamic_plan')
+                  and not exists (select 1 from execution_reports er where er.task_id = planned_tasks.id)
+                  and not exists (select 1 from non_execution_reports ner where ner.task_id = planned_tasks.id)
+                """,
+                (old_status_id, as_of, point_ids or ["00000000-0000-0000-0000-000000000000"]),
+            )
+            conn.execute(
+                """
+                update maintenance_points
+                set is_active = false,
+                    original_values = coalesce(original_values, '{}'::jsonb) || '{"superseded_by_physical_equipment_import": true}'::jsonb,
+                    updated_at = now()
+                where original_values->>'source_mode' = 'calculated_next_due'
+                  and not (id = any(%s::uuid[]))
+                """,
+                (point_ids or ["00000000-0000-0000-0000-000000000000"],),
             )
             execute_many(
                 """
@@ -859,7 +979,7 @@ def apply_to_database(database_url: str, operations: list[Operation], windows: l
             "areas": len(area_rows),
             "production_lines": len(line_rows),
             "materials": len(material_rows),
-            "fallback_equipment_inserted": len(equipment_rows),
+            "plan_file_equipment": len(equipment_rows),
             "maintenance_points": len(point_rows),
             "annual_plan_items": len(item_rows),
             "planned_tasks": len(task_rows),
@@ -922,8 +1042,11 @@ def main() -> None:
     as_of = datetime.strptime(args.as_of, "%Y-%m-%d").date()
     paths = sorted(path for path in ROOT.glob("*.xlsx") if "Master" not in path.name and not path.name.startswith("~$"))
     windows = collect_shutdown_windows(paths)
-    operations = collect_operations(paths, as_of, windows)
+    all_operations = collect_operations(paths, as_of, windows)
+    operations = select_operational_operations(all_operations, as_of.year)
     summary = summarize(operations, windows)
+    summary["available_operations_before_year_dedupe"] = len(all_operations)
+    summary["operational_plan_year"] = as_of.year
 
     if args.apply:
         database_url = os.environ.get("DATABASE_URL")

@@ -139,6 +139,8 @@ def main() -> None:
             rows = cur.fetchall()
             by_key: dict[str, list[dict[str, Any]]] = defaultdict(list)
             for row in rows:
+                if (row.get("original_values") or {}).get("source_mode") == "calculated_plan_equipment":
+                    continue
                 by_key[canonical_code(row["equipment_code"])].append(row)
 
             if args.apply:

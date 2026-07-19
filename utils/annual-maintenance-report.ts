@@ -12,6 +12,8 @@ type QueryResult<T = unknown> = {
 type QueryBuilder<T = unknown> = PromiseLike<QueryResult<T>> & {
   select: (columns: string) => QueryBuilder<T>;
   eq: (column: string, value: unknown) => QueryBuilder<T>;
+  gte: (column: string, value: unknown) => QueryBuilder<T>;
+  lte: (column: string, value: unknown) => QueryBuilder<T>;
   order: (column: string, options?: { ascending?: boolean }) => QueryBuilder<T>;
   range: (from: number, to: number) => QueryBuilder<T>;
 };
@@ -56,12 +58,44 @@ export type AnnualReportDay = {
   greaseChangeCount: number;
 };
 
+export type AnnualReportSummary = {
+  key: string;
+  label: string;
+  equipmentCount: number;
+  internalTaskCount: number;
+  inspectionCount: number;
+  greasingCount: number;
+  oilChangeCount: number;
+  greaseChangeCount: number;
+};
+
+export type LiveStatusCode = "planned" | "completed" | "overdue" | "not_executed" | "rescheduled";
+
+export type AnnualReportLiveStatus = {
+  taskId: string;
+  scheduledDate: string;
+  originalDueDate: string;
+  areaCode: string;
+  areaName: string;
+  equipmentCode: string;
+  equipmentName: string;
+  workTypeName: string;
+  statusCode: LiveStatusCode;
+  statusLabel: string;
+  reason: string;
+};
+
 export type AnnualMaintenanceReport = {
   year: number;
   selectedAreaCode: string | null;
+  selectedWorkTypeCode: string | null;
+  generatedAt: string;
   areas: AnnualReportArea[];
   days: AnnualReportDay[];
+  monthlySummary: AnnualReportSummary[];
+  areaSummary: AnnualReportSummary[];
   details: AnnualReportDetail[];
+  liveStatus: AnnualReportLiveStatus[];
   totals: {
     daysInYear: number;
     workingDays: number;
@@ -71,6 +105,11 @@ export type AnnualMaintenanceReport = {
     greasingCount: number;
     oilChangeCount: number;
     greaseChangeCount: number;
+    livePlannedCount: number;
+    liveCompletedCount: number;
+    liveOverdueCount: number;
+    liveNotExecutedCount: number;
+    liveRescheduledCount: number;
   };
 };
 
@@ -107,6 +146,26 @@ type MaintenancePointRow = {
   maintenance_work_types: { code: string | null; name: string | null } | null;
 };
 
+type PlannedTaskRow = {
+  id: string;
+  scheduled_date: string;
+  original_due_date: string | null;
+  completed_at: string | null;
+  original_values: Record<string, unknown> | null;
+  equipment: {
+    equipment_code: string | null;
+    name: string | null;
+    areas: AnnualReportArea | null;
+  } | null;
+  maintenance_work_types: { code: string | null; name: string | null } | null;
+  task_statuses: { code: string | null; name: string | null } | null;
+};
+
+type NonExecutionReportRow = {
+  reason: string | null;
+  planned_tasks: { id: string | null } | null;
+};
+
 type DayBucket = {
   equipmentIds: Set<string>;
   internalTaskCount: number;
@@ -118,10 +177,11 @@ type DayBucket = {
 
 export async function buildAnnualMaintenanceReport(
   supabase: SupabaseLike,
-  options: { year: number; areaCode?: string | null },
+  options: { year: number; areaCode?: string | null; workTypeCode?: string | null; includeLiveStatus?: boolean },
 ): Promise<AnnualMaintenanceReport> {
   const year = normalizeYear(options.year);
   const selectedAreaCode = options.areaCode?.trim() || null;
+  const selectedWorkTypeCode = normalizeWorkType(options.workTypeCode);
   const start = `${year}-01-01`;
   const end = `${year}-12-31`;
 
@@ -146,6 +206,7 @@ export async function buildAnnualMaintenanceReport(
 
     const workTypeCode = point.maintenance_work_types?.code ?? "";
     if (!workTypeCode) continue;
+    if (selectedWorkTypeCode && workTypeCode !== selectedWorkTypeCode) continue;
 
     const sourceMode = stringValue(point.original_values?.source_mode);
     if (sourceMode && !SOURCE_MODES.has(sourceMode)) continue;
@@ -226,7 +287,7 @@ export async function buildAnnualMaintenanceReport(
   for (const detail of details) {
     const bucket = buckets.get(detail.date);
     if (!bucket) continue;
-    bucket.equipmentIds.add(detail.equipmentId);
+    bucket.equipmentIds.add(physicalEquipmentKey(detail.areaCode, detail.equipmentCode));
     bucket.internalTaskCount += 1;
     if (detail.workTypeCode === "inspection") bucket.inspectionCount += 1;
     if (detail.workTypeCode === "greasing") bucket.greasingCount += 1;
@@ -244,13 +305,22 @@ export async function buildAnnualMaintenanceReport(
     oilChangeCount: bucket.oilChangeCount,
     greaseChangeCount: bucket.greaseChangeCount,
   }));
+  const monthlySummary = buildMonthlySummary(days);
+  const areaSummary = buildAreaSummary(details);
+  const liveStatus = options.includeLiveStatus === false ? [] : await loadAnnualReportLiveStatus(supabase, { year, areaCode: selectedAreaCode, workTypeCode: selectedWorkTypeCode });
+  const liveStatusTotals = countLiveStatuses(liveStatus);
 
   return {
     year,
     selectedAreaCode,
+    selectedWorkTypeCode,
+    generatedAt: new Date().toISOString(),
     areas,
     days,
+    monthlySummary,
+    areaSummary,
     details,
+    liveStatus,
     totals: {
       daysInYear: days.length,
       workingDays: days.filter((day) => day.internalTaskCount > 0).length,
@@ -260,6 +330,11 @@ export async function buildAnnualMaintenanceReport(
       greasingCount: details.filter((detail) => detail.workTypeCode === "greasing").length,
       oilChangeCount: details.filter((detail) => detail.workTypeCode === "oil_change").length,
       greaseChangeCount: details.filter((detail) => detail.workTypeCode === "grease_change").length,
+      livePlannedCount: liveStatusTotals.planned,
+      liveCompletedCount: liveStatusTotals.completed,
+      liveOverdueCount: liveStatusTotals.overdue,
+      liveNotExecutedCount: liveStatusTotals.not_executed,
+      liveRescheduledCount: liveStatusTotals.rescheduled,
     },
   };
 }
@@ -277,8 +352,75 @@ async function loadMaintenancePoints(supabase: SupabaseLike) {
   );
 }
 
-async function fetchAll<T>(makeQuery: (from: number, to: number) => PromiseLike<QueryResult<unknown>>) {
-  const pageSize = 1000;
+export async function loadAnnualReportLiveStatus(
+  supabase: SupabaseLike,
+  options: { year: number; areaCode?: string | null; workTypeCode?: string | null },
+): Promise<AnnualReportLiveStatus[]> {
+  const year = normalizeYear(options.year);
+  const selectedAreaCode = options.areaCode?.trim() || null;
+  const selectedWorkTypeCode = normalizeWorkType(options.workTypeCode);
+  const start = `${year}-01-01`;
+  const end = `${year}-12-31`;
+
+  const [tasks, nonExecutionReports] = await Promise.all([
+    fetchAll<PlannedTaskRow>(
+      (from, to) =>
+        supabase
+          .from("planned_tasks")
+          .select(
+          "id,scheduled_date,original_due_date,completed_at,original_values,equipment!inner(equipment_code,name,areas(id,code,name)),maintenance_work_types(code,name),task_statuses(code,name)",
+        )
+          .gte("scheduled_date", start)
+          .lte("scheduled_date", end)
+          .order("scheduled_date", { ascending: true })
+          .range(from, to),
+      250,
+    ),
+    fetchAll<NonExecutionReportRow>(
+      (from, to) =>
+        supabase
+          .from("non_execution_reports")
+          .select("reason,planned_tasks(id,scheduled_date)")
+          .range(from, to),
+      250,
+    ),
+  ]);
+  const reasonsByTask = new Map<string, string>();
+  for (const report of nonExecutionReports) {
+    const taskId = report.planned_tasks?.id;
+    if (taskId && report.reason && !reasonsByTask.has(taskId)) {
+      reasonsByTask.set(taskId, report.reason);
+    }
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  return tasks
+    .filter((task) => {
+      const areaCode = task.equipment?.areas?.code ?? "";
+      const workTypeCode = task.maintenance_work_types?.code ?? "";
+      if (selectedAreaCode && areaCode !== selectedAreaCode) return false;
+      if (selectedWorkTypeCode && workTypeCode !== selectedWorkTypeCode) return false;
+      return true;
+    })
+    .map((task) => {
+      const status = taskLiveStatus(task, reasonsByTask.get(task.id), today);
+      return {
+        taskId: task.id,
+        scheduledDate: task.scheduled_date,
+        originalDueDate: task.original_due_date ?? task.scheduled_date,
+        areaCode: task.equipment?.areas?.code ?? "لايوجد",
+        areaName: task.equipment?.areas?.name ?? "لايوجد",
+        equipmentCode: task.equipment?.equipment_code ?? "لايوجد",
+        equipmentName: task.equipment?.name ?? "لايوجد",
+        workTypeName: workTypeLabel(task.maintenance_work_types?.code ?? "", task.maintenance_work_types?.name),
+        statusCode: status,
+        statusLabel: liveStatusLabel(status),
+        reason: reasonsByTask.get(task.id) ?? "لايوجد",
+      };
+    });
+}
+
+async function fetchAll<T>(makeQuery: (from: number, to: number) => PromiseLike<QueryResult<unknown>>, pageSize = 1000) {
   const rows: T[] = [];
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await makeQuery(from, from + pageSize - 1);
@@ -303,6 +445,87 @@ function createDayBuckets(year: number) {
     });
   }
   return buckets;
+}
+
+function buildMonthlySummary(days: AnnualReportDay[]): AnnualReportSummary[] {
+  return Array.from(groupByMonth(days).entries()).map(([month, monthDays]) => ({
+    key: month,
+    label: monthLabel(month),
+    equipmentCount: monthDays.reduce((sum, day) => sum + day.equipmentCount, 0),
+    internalTaskCount: monthDays.reduce((sum, day) => sum + day.internalTaskCount, 0),
+    inspectionCount: monthDays.reduce((sum, day) => sum + day.inspectionCount, 0),
+    greasingCount: monthDays.reduce((sum, day) => sum + day.greasingCount, 0),
+    oilChangeCount: monthDays.reduce((sum, day) => sum + day.oilChangeCount, 0),
+    greaseChangeCount: monthDays.reduce((sum, day) => sum + day.greaseChangeCount, 0),
+  }));
+}
+
+function groupByMonth(days: AnnualReportDay[]) {
+  const groups = new Map<string, AnnualReportDay[]>();
+  for (const day of days) {
+    const key = day.date.slice(0, 7);
+    groups.set(key, [...(groups.get(key) ?? []), day]);
+  }
+  return groups;
+}
+
+function buildAreaSummary(details: AnnualReportDetail[]): AnnualReportSummary[] {
+  const groups = new Map<string, { label: string; equipmentIds: Set<string>; details: AnnualReportDetail[] }>();
+  for (const detail of details) {
+    const current = groups.get(detail.areaCode) ?? { label: detail.areaName, equipmentIds: new Set<string>(), details: [] };
+    current.equipmentIds.add(physicalEquipmentKey(detail.areaCode, detail.equipmentCode));
+    current.details.push(detail);
+    groups.set(detail.areaCode, current);
+  }
+
+  return Array.from(groups.entries())
+    .map(([key, group]) => ({
+      key,
+      label: group.label,
+      equipmentCount: group.equipmentIds.size,
+      internalTaskCount: group.details.length,
+      inspectionCount: group.details.filter((detail) => detail.workTypeCode === "inspection").length,
+      greasingCount: group.details.filter((detail) => detail.workTypeCode === "greasing").length,
+      oilChangeCount: group.details.filter((detail) => detail.workTypeCode === "oil_change").length,
+      greaseChangeCount: group.details.filter((detail) => detail.workTypeCode === "grease_change").length,
+    }))
+    .sort((a, b) => b.internalTaskCount - a.internalTaskCount);
+}
+
+function taskLiveStatus(task: PlannedTaskRow, nonExecutionReason: string | undefined, today: string): LiveStatusCode {
+  const statusCode = task.task_statuses?.code;
+  const isRescheduled = Boolean(task.original_values?.rescheduled_after_non_execution) || Boolean(task.original_due_date && task.original_due_date !== task.scheduled_date);
+  if (task.completed_at || statusCode === "COMPLETED") return "completed";
+  if (nonExecutionReason || statusCode === "MISSED") return "not_executed";
+  if (isRescheduled) return "rescheduled";
+  if (task.scheduled_date < today) return "overdue";
+  return "planned";
+}
+
+function liveStatusLabel(status: LiveStatusCode) {
+  if (status === "completed") return "مكتمل";
+  if (status === "overdue") return "متأخر";
+  if (status === "not_executed") return "غير منفذ";
+  if (status === "rescheduled") return "معاد جدولته";
+  return "مخطط";
+}
+
+function countLiveStatuses(rows: AnnualReportLiveStatus[]) {
+  return rows.reduce(
+    (counts, row) => {
+      counts[row.statusCode] += 1;
+      return counts;
+    },
+    { planned: 0, completed: 0, overdue: 0, not_executed: 0, rescheduled: 0 } satisfies Record<LiveStatusCode, number>,
+  );
+}
+
+function physicalEquipmentKey(areaCode: string, equipmentCode: string) {
+  return `${normalizeKey(areaCode)}|${normalizeKey(equipmentCode)}`;
+}
+
+function normalizeKey(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, "");
 }
 
 function groupShutdownWindows(windows: ShutdownWindow[]) {
@@ -398,9 +621,18 @@ function dayName(date: string) {
   return new Intl.DateTimeFormat("ar-SA-u-nu-latn", { weekday: "long", timeZone: "UTC" }).format(new Date(`${date}T00:00:00.000Z`));
 }
 
+function monthLabel(month: string) {
+  return new Intl.DateTimeFormat("ar-SA-u-nu-latn", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00.000Z`));
+}
+
 function normalizeYear(value: number) {
   if (!Number.isFinite(value)) return new Date().getUTCFullYear();
   return Math.min(2100, Math.max(2020, Math.floor(value)));
+}
+
+function normalizeWorkType(value?: string | null) {
+  const code = value?.trim() ?? "";
+  return ["inspection", "greasing", "oil_change", "grease_change"].includes(code) ? code : null;
 }
 
 function firstDate(values: Array<string | null | undefined>) {

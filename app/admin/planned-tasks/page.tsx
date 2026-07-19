@@ -1,4 +1,5 @@
 import { reschedulePlannedTaskGroupAction } from "@/app/auth/actions";
+import { AdminCompleteToggle } from "@/app/admin/planned-tasks/admin-complete-toggle";
 import { AppShell, ContentCard, MetricCard, NavButton, PageHeader, StatusBadge } from "@/app/ui/shell";
 import { SubmitButton } from "@/app/ui/submit-button";
 import { getSaudiToday, SYSTEM_START_DATE } from "@/utils/operational-time";
@@ -18,8 +19,10 @@ type PlannedTask = {
   planned_quantity: number | null;
   planned_quantity_unit: string | null;
   main_worker_id: string | null;
+  completed_at: string | null;
   execution_condition: string | null;
   original_values: Record<string, unknown> | null;
+  task_statuses: { code: string | null; is_terminal: boolean | null } | null;
   equipment: {
     id: string;
     equipment_code: string;
@@ -96,8 +99,7 @@ export default async function PlannedTasksPage({
   const to = from + pageSize - 1;
   const supabase = createClient(await cookies());
   const visibleDate = selectedDate > SYSTEM_START_DATE ? selectedDate : SYSTEM_START_DATE;
-  const { data: terminalStatuses } = await supabase.from("task_statuses").select("id").eq("is_terminal", true);
-  const terminalStatusIds = (terminalStatuses ?? []).map((status) => status.id);
+  const { data: oldStatus } = await supabase.from("task_statuses").select("id").eq("code", "OLD").maybeSingle();
   const { data: areaRows } = await supabase.from("areas").select("id,code,name").in("code", areaTabCodes).eq("is_active", true);
   const areaTabs = orderAreaTabs((areaRows ?? []) as unknown as AreaTab[]);
   const selectedArea = areaTabs.find((area) => area.code === selectedAreaCode) ?? null;
@@ -107,13 +109,13 @@ export default async function PlannedTasksPage({
   const taskQuery = supabase
     .from("planned_tasks")
     .select(
-      "id,scheduled_date,planned_quantity,planned_quantity_unit,main_worker_id,execution_condition,original_values,equipment!inner(id,equipment_code,name,area_id,areas(name),production_lines(line_code,name)),maintenance_points(point_name,part_description,execution_condition,running_hours_per_day,frequency_days,frequency_hours,last_change_date,last_inspection_date,last_grease_date,original_values),materials(name,unit),maintenance_work_types(code,name)",
+      "id,scheduled_date,planned_quantity,planned_quantity_unit,main_worker_id,completed_at,execution_condition,original_values,task_statuses(code,is_terminal),equipment!inner(id,equipment_code,name,area_id,areas(name),production_lines(line_code,name)),maintenance_points(point_name,part_description,execution_condition,running_hours_per_day,frequency_days,frequency_hours,last_change_date,last_inspection_date,last_grease_date,original_values),materials(name,unit),maintenance_work_types(code,name)",
     )
     .eq("scheduled_date", visibleDate)
     .order("id", { ascending: true })
     .limit(1000);
-  if (terminalStatusIds.length) {
-    taskQuery.not("status_id", "in", `(${terminalStatusIds.join(",")})`);
+  if (oldStatus?.id) {
+    taskQuery.neq("status_id", oldStatus.id);
   }
   if (selectedArea) {
     taskQuery.eq("equipment.area_id", selectedArea.id);
@@ -296,9 +298,11 @@ function EquipmentTaskCard({ group, page }: { group: EquipmentTaskGroup; page: n
   const oilChange = byType.oil_change ?? [];
   const greaseChange = byType.grease_change ?? [];
   const fullyAssigned = group.tasks.every((task) => task.main_worker_id);
+  const isCompleted = group.tasks.every(isTaskCompleted);
+  const canReopen = isCompleted && group.tasks.every((task) => task.original_values?.completed_by_admin === true);
 
   return (
-    <details className="group rounded-lg border border-[#dbe3ea] bg-[#fbfcfd] shadow-sm transition open:border-[#0b559f] open:bg-white">
+    <details className={`group rounded-lg border shadow-sm transition open:border-[#0b559f] open:bg-white ${isCompleted ? "border-[#b7dfc7] bg-[#f4fbf6]" : "border-[#dbe3ea] bg-[#fbfcfd]"}`}>
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 outline-none transition hover:bg-[#f3f7fb] [&::-webkit-details-marker]:hidden">
         <div className="min-w-0">
           <p className="text-xs font-black text-[#607086]">المعدة</p>
@@ -306,7 +310,15 @@ function EquipmentTaskCard({ group, page }: { group: EquipmentTaskGroup; page: n
             {group.equipment?.equipment_code ?? "لايوجد"} - {group.equipment?.name ?? "لايوجد"}
           </h3>
         </div>
-        <ChevronDown className="h-5 w-5 shrink-0 text-[#607086] transition group-open:rotate-180" aria-hidden="true" />
+        <div className="flex shrink-0 items-center gap-3">
+          <AdminCompleteToggle
+            taskIds={group.tasks.map((task) => task.id)}
+            scheduledDate={group.scheduledDate}
+            isCompleted={isCompleted}
+            canReopen={canReopen}
+          />
+          <ChevronDown className="h-5 w-5 text-[#607086] transition group-open:rotate-180" aria-hidden="true" />
+        </div>
       </summary>
 
       <div className="border-t border-[#e2e8ef] p-4">
@@ -314,6 +326,7 @@ function EquipmentTaskCard({ group, page }: { group: EquipmentTaskGroup; page: n
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge tone={fullyAssigned ? "success" : "warning"}>{fullyAssigned ? "تم التعيين" : "تحتاج عامل"}</StatusBadge>
+              {isCompleted ? <StatusBadge tone="success">مكتملة</StatusBadge> : null}
               <StatusBadge>{group.scheduledDate}</StatusBadge>
               <StatusBadge tone="neutral">خط {lineLabel(group.tasks[0])}</StatusBadge>
               <StatusBadge tone="success">{formatCount(group.tasks.length)} أعمال</StatusBadge>
@@ -352,6 +365,10 @@ function EquipmentTaskCard({ group, page }: { group: EquipmentTaskGroup; page: n
       </div>
     </details>
   );
+}
+
+function isTaskCompleted(task: PlannedTask) {
+  return Boolean(task.completed_at) || task.task_statuses?.code === "COMPLETED";
 }
 
 function MaterialsSummary({ tasks, compact = false }: { tasks: PlannedTask[]; compact?: boolean }) {
@@ -437,7 +454,7 @@ function groupByEquipment(tasks: PlannedTask[]): EquipmentTaskGroup[] {
   const groups = new Map<string, PlannedTask[]>();
 
   for (const task of tasks) {
-    const key = [task.scheduled_date, task.equipment?.id ?? task.equipment?.equipment_code ?? "unknown-equipment"].join("|");
+    const key = [task.scheduled_date, physicalEquipmentKey(task.equipment)].join("|");
     groups.set(key, [...(groups.get(key) ?? []), task]);
   }
 
@@ -458,7 +475,7 @@ function groupNonExecutionReports(reports: NonExecutionReport[], areaId: string 
     const task = report.planned_tasks;
     if (!task?.id) continue;
     if (areaId && task.equipment?.area_id !== areaId) continue;
-    const key = [task.scheduled_date, task.equipment?.id ?? task.equipment?.equipment_code ?? "unknown-equipment"].join("|");
+    const key = [task.scheduled_date, physicalEquipmentKey(task.equipment)].join("|");
     groups.set(key, [...(groups.get(key) ?? []), report]);
   }
 
@@ -477,6 +494,14 @@ function tasksByType(tasks: PlannedTask[]) {
     grouped[key] = [...(grouped[key] ?? []), task];
   }
   return grouped;
+}
+
+function physicalEquipmentKey(equipment: { area_id: string | null; equipment_code: string } | null) {
+  return [equipment?.area_id ?? "unknown-area", normalizeKey(equipment?.equipment_code ?? "unknown-equipment")].join("|");
+}
+
+function normalizeKey(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, "");
 }
 
 function workTypeRank(task: PlannedTask) {

@@ -22,6 +22,10 @@ function optionalText(value: FormDataEntryValue | null) {
   return text || null;
 }
 
+function normalizeEquipmentCode(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, "");
+}
+
 function safeFileName(value: string) {
   return value.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
@@ -444,6 +448,55 @@ export async function completePlannedTaskGroupAction(formData: FormData) {
   redirect(`/worker/tasks?date=${returnDate}&message=${encoded("تم حفظ تنفيذ كارت المعدة وتحديث الخطة")}`);
 }
 
+export async function adminCompletePlannedTaskGroupAction(formData: FormData) {
+  const supabase = createClient(await cookies());
+  const taskIds = selectedValues(formData, "task_ids");
+  const returnDate = optionalText(formData.get("return_date")) ?? getSaudiToday();
+  const completedAt = `${returnDate}T16:00:00+03:00`;
+
+  if (!taskIds.length) {
+    redirect(`/admin/planned-tasks?date=${returnDate}&message=${encoded("لا توجد مهام داخل الكارت")}`);
+  }
+
+  const { error } = await supabase.rpc("admin_complete_planned_task_group", {
+    target_task_ids: taskIds,
+    completed_at_value: completedAt,
+    notes_value: "تم اعتبار كارت المعدة مكتمل بواسطة المدير",
+  });
+
+  if (error) {
+    redirect(`/admin/planned-tasks?date=${returnDate}&message=${encoded(error.message)}`);
+  }
+
+  revalidatePath("/admin/planned-tasks");
+  revalidatePath("/worker/tasks");
+  revalidatePath("/admin/reports");
+  redirect(`/admin/planned-tasks?date=${returnDate}&message=${encoded("تم اعتبار كارت المعدة مكتمل وتحديث الخطة")}`);
+}
+
+export async function adminUncompletePlannedTaskGroupAction(formData: FormData) {
+  const supabase = createClient(await cookies());
+  const taskIds = selectedValues(formData, "task_ids");
+  const returnDate = optionalText(formData.get("return_date")) ?? getSaudiToday();
+
+  if (!taskIds.length) {
+    redirect(`/admin/planned-tasks?date=${returnDate}&message=${encoded("لا توجد مهام داخل الكارت")}`);
+  }
+
+  const { error } = await supabase.rpc("admin_uncomplete_planned_task_group", {
+    target_task_ids: taskIds,
+  });
+
+  if (error) {
+    redirect(`/admin/planned-tasks?date=${returnDate}&message=${encoded(error.message)}`);
+  }
+
+  revalidatePath("/admin/planned-tasks");
+  revalidatePath("/worker/tasks");
+  revalidatePath("/admin/reports");
+  redirect(`/admin/planned-tasks?date=${returnDate}&message=${encoded("تم إرجاع كارت المعدة إلى غير مكتمل")}`);
+}
+
 export async function submitNonExecutionGroupAction(formData: FormData) {
   const supabase = createClient(await cookies());
   const taskIds = selectedValues(formData, "task_ids");
@@ -686,15 +739,38 @@ export async function upsertEquipmentAction(formData: FormData) {
 
 export async function createAdhocTaskAction(formData: FormData) {
   const supabase = createClient(await cookies());
-  const equipmentId = optionalText(formData.get("equipment_id"));
+  const equipmentCode = optionalText(formData.get("equipment_code"));
   const workerId = optionalText(formData.get("worker_id"));
   const scheduledDate = String(formData.get("scheduled_date") ?? "").trim();
   const issue = String(formData.get("issue") ?? "").trim();
   const priority = String(formData.get("priority") ?? "normal");
 
-  if (!equipmentId || !workerId || !scheduledDate || !issue) {
-    redirect(`/admin/ad-hoc-tasks?message=${encoded("المعدة والعامل واليوم ووصف المهمة مطلوبة")}`);
+  if (!equipmentCode || !workerId || !scheduledDate || !issue) {
+    redirect(`/admin/ad-hoc-tasks?message=${encoded("كود المعدة والعامل واليوم ووصف المهمة مطلوبة")}`);
   }
+
+  const { data: equipmentRows, error: equipmentError } = await supabase
+    .from("equipment")
+    .select("id,equipment_code,name,areas(name)")
+    .eq("is_active", true)
+    .limit(2000);
+
+  if (equipmentError) {
+    redirect(`/admin/ad-hoc-tasks?message=${encoded(equipmentError.message)}`);
+  }
+
+  const normalizedCode = normalizeEquipmentCode(equipmentCode);
+  const matchingEquipment = (equipmentRows ?? []).filter((item) => normalizeEquipmentCode(item.equipment_code ?? "") === normalizedCode);
+
+  if (!matchingEquipment.length) {
+    redirect(`/admin/ad-hoc-tasks?message=${encoded(`كود المعدة ${equipmentCode} غير موجود`)}`);
+  }
+
+  if (matchingEquipment.length > 1) {
+    redirect(`/admin/ad-hoc-tasks?message=${encoded(`كود المعدة ${equipmentCode} موجود في أكثر من مكان، افتح صفحة المعدات وحدد المعدة المطلوبة`)}`);
+  }
+
+  const equipmentId = matchingEquipment[0].id;
 
   const {
     data: { user },

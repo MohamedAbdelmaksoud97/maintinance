@@ -11,12 +11,25 @@ export function ExportExcelButton({ href, filename }: { href: string; filename: 
 
   async function handleExport() {
     if (state === "loading") return;
+    const progressTimers: number[] = [];
     setState("loading");
     setMessage("جاري حساب الخطة السنوية وتجهيز ملف Excel...");
+    progressTimers.push(
+      window.setTimeout(() => {
+        setMessage("يتم الآن تنسيق ملف Excel الرسمي. قد يستغرق ذلك عدة ثواني حسب حجم السنة.");
+      }, 6000),
+      window.setTimeout(() => {
+        setMessage("ما زال التصدير يعمل. لا تغلق الصفحة حتى يبدأ التحميل.");
+      }, 18000),
+    );
 
     try {
       const response = await fetch(href, { cache: "no-store" });
       if (!response.ok) throw new Error("تعذر إنشاء ملف Excel");
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) {
+        throw new Error("لم يستلم النظام ملف Excel صالح");
+      }
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -34,7 +47,9 @@ export function ExportExcelButton({ href, filename }: { href: string; filename: 
       }, 3200);
     } catch {
       setState("error");
-      setMessage("تعذر تصدير الملف الآن. أعد المحاولة بعد لحظات.");
+      setMessage("تعذر تصدير الملف الآن. تأكد من تسجيل الدخول ثم أعد المحاولة.");
+    } finally {
+      progressTimers.forEach((timer) => window.clearTimeout(timer));
     }
   }
 

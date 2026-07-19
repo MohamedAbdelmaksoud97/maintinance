@@ -30,7 +30,7 @@ export default function ReportsLoading() {
       <section className="my-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <LoadingMetric icon={<CalendarDays size={20} />} label="أيام السنة" />
         <LoadingMetric icon={<BarChart3 size={20} />} label="أيام بها شغل" />
-        <LoadingMetric icon={<FileSpreadsheet size={20} />} label="معدات مطلوبة" />
+        <LoadingMetric icon={<FileSpreadsheet size={20} />} label="إجمالي ظهور المعدات" />
         <LoadingMetric icon={<Loader2 size={20} className="animate-spin" />} label="أعمال داخلية" />
       </section>
 

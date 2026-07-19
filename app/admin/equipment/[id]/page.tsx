@@ -9,14 +9,10 @@ type Equipment = {
   equipment_code: string;
   name: string | null;
   description: string | null;
+  plan_identity_key: string | null;
   original_values: Record<string, unknown> | null;
   areas: { name: string } | null;
-};
-
-type MasterRow = {
-  sheet?: string;
-  row?: number;
-  columns?: Record<string, unknown>;
+  production_lines: { line_code: string | null; name: string | null } | null;
 };
 
 type UpcomingTask = {
@@ -28,6 +24,24 @@ type UpcomingTask = {
   planned_quantity_unit: string | null;
   maintenance_work_types: { code: string | null; name: string | null } | null;
   maintenance_points: { point_name: string | null } | null;
+  materials: { name: string | null; unit: string | null } | null;
+};
+
+type MaintenancePoint = {
+  id: string;
+  point_name: string | null;
+  part_description: string | null;
+  execution_condition: string | null;
+  quantity: number | null;
+  quantity_unit: string | null;
+  running_hours_per_day: number | null;
+  frequency_days: number | null;
+  frequency_hours: number | null;
+  last_change_date: string | null;
+  last_inspection_date: string | null;
+  last_grease_date: string | null;
+  original_values: Record<string, unknown> | null;
+  maintenance_work_types: { code: string | null; name: string | null } | null;
   materials: { name: string | null; unit: string | null } | null;
 };
 
@@ -46,7 +60,7 @@ export default async function EquipmentDetailsPage({
   const { data: oldStatus } = await supabase.from("task_statuses").select("id").eq("code", "OLD").maybeSingle();
   const { data } = await supabase
     .from("equipment")
-    .select("id,equipment_code,name,description,original_values,areas(name)")
+    .select("id,equipment_code,name,description,plan_identity_key,original_values,areas(name),production_lines(line_code,name)")
     .eq("id", id)
     .maybeSingle();
 
@@ -63,8 +77,15 @@ export default async function EquipmentDetailsPage({
     .neq("status_id", oldStatus?.id ?? "00000000-0000-0000-0000-000000000000")
     .order("scheduled_date", { ascending: true })
     .order("id", { ascending: true });
-  const rows = getMasterRows(equipment.original_values);
-  const zone = textValue(equipment.original_values?.master_line) || "بدون مكان";
+  const { data: pointData } = await supabase
+    .from("maintenance_points")
+    .select(
+      "id,point_name,part_description,execution_condition,quantity,quantity_unit,running_hours_per_day,frequency_days,frequency_hours,last_change_date,last_inspection_date,last_grease_date,original_values,maintenance_work_types(code,name),materials(name,unit)",
+    )
+    .eq("equipment_id", equipment.id)
+    .order("id", { ascending: true });
+  const rows = (pointData ?? []) as unknown as MaintenancePoint[];
+  const zone = zoneLabel(equipment);
   const upcomingTasks = firstTaskByWorkType((upcomingData ?? []) as unknown as UpcomingTask[]);
 
   return (
@@ -96,7 +117,7 @@ export default async function EquipmentDetailsPage({
             <Info label="كود المعدة" value={equipment.equipment_code} />
             <Info label="اسم المعدة" value={equipment.name ?? "-"} />
             <Info label="المكان" value={zone} />
-            <Info label="الوصف" value={equipment.description ?? "-"} />
+            <Info label="الوصف" value={equipment.description ?? "لايوجد"} />
           </div>
         </ContentCard>
 
@@ -119,14 +140,18 @@ export default async function EquipmentDetailsPage({
           </div>
           <div className="mt-4 grid gap-3">
             {rows.map((row, index) => (
-              <div key={`${row.sheet}-${row.row}-${index}`} className="rounded-lg border border-[#e2e8ef] bg-[#fbfcfd] p-4">
+              <div key={row.id} className="rounded-lg border border-[#e2e8ef] bg-[#fbfcfd] p-4">
                 <div className="mb-3 flex flex-wrap items-center gap-2">
                   <StatusBadge>نقطة صيانة {(index + 1).toLocaleString("ar-EG")}</StatusBadge>
+                  <StatusBadge tone="neutral">{workTypeLabel(row.maintenance_work_types?.code)}</StatusBadge>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                  {Object.entries(row.columns ?? {}).map(([key, value]) => (
-                    <Info key={key} label={key} value={textValue(value) || "-"} compact />
-                  ))}
+                  <Info label="الجزء" value={row.part_description ?? "لايوجد"} compact />
+                  <Info label="عدد النقاط" value={row.point_name ?? "لايوجد"} compact />
+                  <Info label="المادة والكمية" value={pointMaterialValue(row)} compact />
+                  <Info label="طريقة التنفيذ" value={conditionLabel(row.execution_condition)} compact />
+                  <Info label="التكرار" value={pointFrequencyValue(row)} compact />
+                  <Info label="آخر تنفيذ" value={pointLastDate(row)} compact />
                 </div>
               </div>
             ))}
@@ -167,11 +192,6 @@ function Info({ label, value, compact = false }: { label: string; value: string;
   );
 }
 
-function getMasterRows(values: Equipment["original_values"]): MasterRow[] {
-  const rows = values?.master_rows;
-  return Array.isArray(rows) ? (rows as MasterRow[]) : [];
-}
-
 const operationOrder = ["inspection", "greasing", "grease_change", "oil_change"];
 
 function firstTaskByWorkType(tasks: UpcomingTask[]) {
@@ -210,4 +230,27 @@ function materialValue(task: UpcomingTask) {
 function textValue(value: unknown) {
   if (value === null || value === undefined) return "";
   return String(value);
+}
+
+function zoneLabel(equipment: Equipment) {
+  const area = equipment.areas?.name ?? textValue(equipment.original_values?.area_code) ?? "لايوجد";
+  const line = equipment.production_lines?.line_code ?? textValue(equipment.original_values?.line_code);
+  return line ? `${area} - Line ${line}` : area;
+}
+
+function pointMaterialValue(point: MaintenancePoint) {
+  const name = point.materials?.name ?? "لايوجد";
+  const quantity = point.quantity ?? "-";
+  const unit = point.quantity_unit ?? point.materials?.unit ?? "";
+  return `${name} · ${quantity} ${unit}`.trim();
+}
+
+function pointFrequencyValue(point: MaintenancePoint) {
+  if (point.frequency_days) return `${point.frequency_days} يوم`;
+  if (point.frequency_hours) return `${point.frequency_hours} ساعة`;
+  return "لايوجد";
+}
+
+function pointLastDate(point: MaintenancePoint) {
+  return point.last_inspection_date ?? point.last_grease_date ?? point.last_change_date ?? textValue(point.original_values?.last_date) ?? "لايوجد";
 }

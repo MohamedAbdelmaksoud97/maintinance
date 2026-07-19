@@ -5,6 +5,7 @@ import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
 
 type EquipmentOption = { id: string; equipment_code: string; name: string | null };
+type EquipmentRow = EquipmentOption & { areas: { name: string | null } | null };
 type WorkerOption = { id: string; full_name: string };
 type Report = {
   id: string;
@@ -24,7 +25,7 @@ export default async function AdHocTasksPage({
   const params = await searchParams;
   const supabase = createClient(await cookies());
   const [{ data: equipment }, { data: workers }, { data: reports }] = await Promise.all([
-    supabase.from("equipment").select("id,equipment_code,name").eq("is_active", true).order("equipment_code").limit(1000),
+    supabase.from("equipment").select("id,equipment_code,name,areas(name)").eq("is_active", true).order("equipment_code").limit(2000),
     supabase.from("workers").select("id,full_name").eq("is_active", true).order("full_name"),
     supabase
       .from("troubleshooting_reports")
@@ -33,7 +34,7 @@ export default async function AdHocTasksPage({
       .limit(20),
   ]);
 
-  const equipmentOptions = (equipment ?? []) as EquipmentOption[];
+  const equipmentOptions = (equipment ?? []) as unknown as EquipmentRow[];
   const workerOptions = (workers ?? []) as WorkerOption[];
   const recentReports = (reports ?? []) as unknown as Report[];
 
@@ -62,15 +63,19 @@ export default async function AdHocTasksPage({
         <h2 className="text-lg font-black">بيانات المهمة</h2>
         <form action={createAdhocTaskAction} className="mt-4 grid gap-3 md:grid-cols-2">
           <label className="block text-sm font-black text-[#324155]">
-            المعدة
-            <select name="equipment_id" required className="mt-2 w-full rounded-lg border border-[#cbd7e3] bg-white px-3 py-3 font-semibold outline-none">
-              <option value="">اختر المعدة</option>
+            كود المعدة
+            <input
+              name="equipment_code"
+              list="adhoc-equipment-codes"
+              required
+              placeholder="مثال: 211BC A"
+              className="mt-2 w-full rounded-lg border border-[#cbd7e3] bg-white px-3 py-3 font-semibold outline-none transition focus:border-[#0b559f] focus:ring-4 focus:ring-[#0b559f]/10"
+            />
+            <datalist id="adhoc-equipment-codes">
               {equipmentOptions.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.equipment_code} - {item.name ?? "بدون اسم"}
-                </option>
+                <option key={item.id} value={item.equipment_code} label={`${item.equipment_code} - ${item.name ?? "لايوجد"} - ${item.areas?.name ?? "لايوجد"}`} />
               ))}
-            </select>
+            </datalist>
           </label>
           <label className="block text-sm font-black text-[#324155]">
             العامل

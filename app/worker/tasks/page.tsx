@@ -18,6 +18,7 @@ type TaskRow = {
     id: string;
     equipment_code: string;
     name: string | null;
+    area_id: string | null;
     areas: { name: string | null } | null;
     production_lines: { line_code: string | null; name: string | null } | null;
   } | null;
@@ -84,7 +85,7 @@ export default async function WorkerTasksPage({
   const plannedTaskQuery = supabase
       .from("planned_tasks")
       .select(
-        "id,scheduled_date,planned_quantity,planned_quantity_unit,execution_condition,original_values,equipment(id,equipment_code,name,areas(name),production_lines(line_code,name)),maintenance_points(point_name,part_description,execution_condition,running_hours_per_day,frequency_days,frequency_hours,last_change_date,last_inspection_date,last_grease_date,original_values),materials(name,unit),maintenance_work_types(code,name)",
+        "id,scheduled_date,planned_quantity,planned_quantity_unit,execution_condition,original_values,equipment(id,equipment_code,name,area_id,areas(name),production_lines(line_code,name)),maintenance_points(point_name,part_description,execution_condition,running_hours_per_day,frequency_days,frequency_hours,last_change_date,last_inspection_date,last_grease_date,original_values),materials(name,unit),maintenance_work_types(code,name)",
       )
       .eq("scheduled_date", visibleDate)
       .order("id", { ascending: true })
@@ -406,7 +407,7 @@ function groupByEquipment(tasks: TaskRow[]): EquipmentTaskGroup[] {
   const groups = new Map<string, TaskRow[]>();
 
   for (const task of tasks) {
-    const key = [task.scheduled_date, task.equipment?.id ?? task.equipment?.equipment_code ?? "unknown-equipment"].join("|");
+    const key = [task.scheduled_date, physicalEquipmentKey(task.equipment)].join("|");
     groups.set(key, [...(groups.get(key) ?? []), task]);
   }
 
@@ -422,6 +423,14 @@ function groupByEquipment(tasks: TaskRow[]): EquipmentTaskGroup[] {
 
 function tasksByType(tasks: TaskRow[]) {
   return Object.groupBy(tasks, (task) => task.maintenance_work_types?.code ?? "unknown");
+}
+
+function physicalEquipmentKey(equipment: NonNullable<TaskRow["equipment"]> | null) {
+  return [equipment?.area_id ?? "unknown-area", normalizeKey(equipment?.equipment_code ?? "unknown-equipment")].join("|");
+}
+
+function normalizeKey(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, "");
 }
 
 function workTypeRank(task: TaskRow) {
