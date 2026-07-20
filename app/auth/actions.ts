@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/utils/supabase/server";
+import { appUrl } from "@/utils/app-url";
 import { getSaudiToday } from "@/utils/operational-time";
 import { revalidatePath } from "next/cache";
 import { cookies, headers } from "next/headers";
@@ -65,7 +66,7 @@ export async function signUpAction(formData: FormData) {
   const fullName = String(formData.get("full_name") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  const origin = (await headers()).get("origin") ?? "";
+  const origin = (await headers()).get("origin");
   const supabase = createClient(await cookies());
 
   if (!fullName || !email || password.length < 6) {
@@ -77,7 +78,7 @@ export async function signUpAction(formData: FormData) {
     password,
     options: {
       data: { full_name: fullName },
-      emailRedirectTo: `${origin}/auth/callback`,
+      emailRedirectTo: appUrl("/auth/callback", origin),
     },
   });
 
@@ -103,11 +104,11 @@ export async function signInAction(formData: FormData) {
 
 export async function resetPasswordAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();
-  const origin = (await headers()).get("origin") ?? "";
+  const origin = (await headers()).get("origin");
   const supabase = createClient(await cookies());
 
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${origin}/auth/callback`,
+    redirectTo: appUrl("/auth/callback", origin),
   });
 
   if (error) {

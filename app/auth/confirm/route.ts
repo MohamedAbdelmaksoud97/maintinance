@@ -1,4 +1,5 @@
 import { createClient } from "@/utils/supabase/server";
+import { appPath, appUrl } from "@/utils/app-url";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
@@ -6,7 +7,7 @@ import { NextResponse } from "next/server";
 const allowedTypes = new Set(["signup", "invite", "magiclink", "recovery", "email_change", "email"]);
 
 function redirectTo(requestUrl: URL, path: string) {
-  return NextResponse.redirect(new URL(path, requestUrl.origin));
+  return NextResponse.redirect(appUrl(appPath(path), requestUrl.origin));
 }
 
 export async function GET(request: Request) {
@@ -33,4 +34,3 @@ export async function GET(request: Request) {
 
   return redirectTo(requestUrl, next);
 }
-
