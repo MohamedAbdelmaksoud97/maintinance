@@ -9,6 +9,7 @@ import { createClient } from "@/utils/supabase/client";
 export type WorkerNotification = {
   id: string;
   notification_type: string;
+  created_at: string;
   scheduled_for: string;
   sent_at: string | null;
   status: string;
@@ -46,7 +47,7 @@ export type AdminNotification = {
 };
 
 const workerSelect =
-  "id,notification_type,scheduled_for,sent_at,status,payload,planned_tasks(scheduled_date,equipment(equipment_code,name,areas(name)))";
+  "id,notification_type,created_at,scheduled_for,sent_at,status,payload,planned_tasks(scheduled_date,equipment(equipment_code,name,areas(name)))";
 const adminSelect =
   "id,notification_type,status,created_at,payload,planned_tasks(id,scheduled_date,equipment(equipment_code,name,areas(name))),non_execution_reports(reason,created_at,workers(full_name))";
 
@@ -62,7 +63,7 @@ export function WorkerNotificationsRealtimeList({ initialNotifications }: { init
       const { data } = await supabase
         .from("notification_queue")
         .select(workerSelect)
-        .order("scheduled_for", { ascending: false })
+        .order("created_at", { ascending: false })
         .limit(100);
 
       if (!disposed) setNotifications(((data ?? []) as unknown as WorkerNotification[]));
@@ -123,9 +124,11 @@ export function AdminNotificationsRealtimeList({ initialNotifications }: { initi
   const supabase = useMemo(() => createClient(), []);
   const [notifications, setNotifications] = useState(initialNotifications);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const visibleNotifications = notifications.filter((notification) => !isFinishedRescheduleNotification(notification));
 
   useEffect(() => {
     let disposed = false;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
 
     async function refresh() {
       const { data } = await supabase
@@ -137,6 +140,8 @@ export function AdminNotificationsRealtimeList({ initialNotifications }: { initi
       if (!disposed) setNotifications(((data ?? []) as unknown as AdminNotification[]));
     }
 
+    refresh();
+
     const channel = supabase
       .channel("admin-notifications-page")
       .on(
@@ -144,10 +149,17 @@ export function AdminNotificationsRealtimeList({ initialNotifications }: { initi
         { event: "*", schema: "public", table: "admin_notifications" },
         () => refresh(),
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          refresh();
+        }
+      });
+
+    intervalId = setInterval(refresh, 15000);
 
     return () => {
       disposed = true;
+      if (intervalId) clearInterval(intervalId);
       supabase.removeChannel(channel);
     };
   }, [supabase]);
@@ -171,7 +183,7 @@ export function AdminNotificationsRealtimeList({ initialNotifications }: { initi
 
   return (
     <section className="grid gap-3">
-      {notifications.map((notification) => (
+      {visibleNotifications.map((notification) => (
         <AdminNotificationCard
           key={notification.id}
           notification={notification}
@@ -179,9 +191,13 @@ export function AdminNotificationsRealtimeList({ initialNotifications }: { initi
           onMarkRead={() => markRead(notification.id)}
         />
       ))}
-      {!notifications.length ? <EmptyState text="لايوجد إشعارات حاليا." /> : null}
+      {!visibleNotifications.length ? <EmptyState text="لايوجد إشعارات حاليا." /> : null}
     </section>
   );
+}
+
+function isFinishedRescheduleNotification(notification: AdminNotification) {
+  return notification.notification_type === "non_execution_reason" && ["resolved", "cancelled"].includes(notification.status);
 }
 
 function WorkerNotificationCard({
@@ -278,7 +294,7 @@ function AdminNotificationCard({
             <form action={reschedulePlannedTaskGroupAction} className="grid gap-2 rounded-lg border border-[#dbe3ea] bg-[#fbfcfd] p-3">
               <input type="hidden" name="task_ids" value={task.id} />
               <input type="hidden" name="return_date" value={task.scheduled_date} />
-              <input name="new_date" type="date" required className="rounded-lg border border-[#cbd7e3] bg-white px-3 py-2.5 text-sm font-bold outline-none transition focus:border-[#0b559f]" />
+              <input name="new_date" type="date" required defaultValue={task.scheduled_date} className="rounded-lg border border-[#cbd7e3] bg-white px-3 py-2.5 text-sm font-bold outline-none transition focus:border-[#0b559f]" />
               <input name="reason" placeholder="ملاحظة إعادة الجدولة" className="rounded-lg border border-[#cbd7e3] bg-white px-3 py-2.5 text-sm font-bold outline-none transition focus:border-[#0b559f]" />
               <SubmitButton pendingText="جاري الحفظ">تحديد موعد جديد</SubmitButton>
             </form>

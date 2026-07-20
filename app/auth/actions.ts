@@ -470,11 +470,19 @@ export async function completePlannedTaskGroupAction(formData: FormData) {
   const taskIds = selectedValues(formData, "task_ids");
   const returnDate = optionalText(formData.get("return_date")) ?? getSaudiToday();
   const startedAt = toSaudiTimestamp(optionalText(formData.get("started_at")));
-  const completedAt = toSaudiTimestamp(optionalText(formData.get("completed_at"))) ?? new Date().toISOString();
+  const completedAt = toSaudiTimestamp(optionalText(formData.get("completed_at")));
   const notes = optionalText(formData.get("notes"));
 
   if (!taskIds.length) {
     redirect(`/worker/tasks?date=${returnDate}&message=${encoded("لا توجد مهام داخل الكارت")}`);
+  }
+
+  if (!startedAt || !completedAt) {
+    redirect(`/worker/tasks?date=${returnDate}&message=${encoded("وقت البداية ووقت النهاية مطلوبان عند تسجيل تنفيذ المهمة")}`);
+  }
+
+  if (new Date(completedAt).getTime() < new Date(startedAt).getTime()) {
+    redirect(`/worker/tasks?date=${returnDate}&message=${encoded("وقت النهاية يجب أن يكون بعد وقت البداية")}`);
   }
 
   const taskDetails = taskIds.reduce<Record<string, string>>((details, taskId) => {
@@ -588,6 +596,7 @@ export async function submitNonExecutionGroupAction(formData: FormData) {
 
   revalidatePath("/worker/tasks");
   revalidatePath("/admin/planned-tasks");
+  revalidatePath("/admin/notifications");
   redirect(`/worker/tasks?date=${returnDate}&message=${encoded("تم تسجيل سبب عدم التنفيذ وإشعار المدير")}`);
 }
 
@@ -609,11 +618,15 @@ export async function reschedulePlannedTaskGroupAction(formData: FormData) {
 
   const { data: tasks, error: loadError } = await supabase
     .from("planned_tasks")
-    .select("id,main_worker_id,original_values")
+    .select("id,main_worker_id,maintenance_point_id,original_values")
     .in("id", taskIds);
 
   if (loadError) {
-    redirect(`/admin/planned-tasks?date=${returnDate}&message=${encoded(loadError.message)}`);
+    redirect(`/admin/planned-tasks?date=${returnDate}&message=${encoded("لم نتمكن من تحميل بيانات المهمة. يرجى المحاولة مرة أخرى.")}`);
+  }
+
+  if (!tasks?.length) {
+    redirect(`/admin/planned-tasks?date=${returnDate}&message=${encoded("لم يتم العثور على المهمة المطلوبة.")}`);
   }
 
   for (const task of tasks ?? []) {
@@ -635,38 +648,75 @@ export async function reschedulePlannedTaskGroupAction(formData: FormData) {
       .eq("id", task.id);
 
     if (error) {
-      redirect(`/admin/planned-tasks?date=${returnDate}&message=${encoded(error.message)}`);
+      redirect(`/admin/planned-tasks?date=${returnDate}&message=${encoded("لم يتم حفظ الموعد الجديد. يرجى المحاولة مرة أخرى.")}`);
+    }
+
+    if (task.maintenance_point_id) {
+      const { error: prepareError } = await supabase.rpc("prepare_maintenance_point_reschedule", {
+        target_maintenance_point_id: task.maintenance_point_id,
+        new_anchor_date: newDate,
+        keep_task_id: task.id,
+        reason: "admin_reschedule_after_review",
+      });
+
+      if (prepareError) {
+        redirect(`/admin/planned-tasks?date=${returnDate}&message=${encoded("تم حفظ الموعد، لكن لم يكتمل تحديث الخطة. يرجى المحاولة مرة أخرى.")}`);
+      }
+
+      const { error: extendError } = await supabase.rpc("extend_dynamic_maintenance_plan", {
+        target_start: newDate,
+        months_ahead: 12,
+        target_maintenance_point_id: task.maintenance_point_id,
+      });
+
+      if (extendError) {
+        redirect(`/admin/planned-tasks?date=${returnDate}&message=${encoded("تم حفظ الموعد، لكن لم يكتمل تحديث الخطة. يرجى المحاولة مرة أخرى.")}`);
+      }
     }
 
     if (task.main_worker_id) {
-      await supabase.from("notification_queue").insert({
+      const { error: workerNotificationError } = await supabase.from("notification_queue").insert({
         worker_id: task.main_worker_id,
         task_id: task.id,
         notification_type: "rescheduled_task",
         scheduled_for: `${newDate}T09:00:00+03:00`,
         payload: {
-          message_ar: "تم تحديد موعد جديد لمهمة صيانة لم تنفذ",
+          message_ar: "تم تحديث موعد المهمة",
           task_id: task.id,
           scheduled_date: newDate,
           reason,
         },
       });
+
+      if (workerNotificationError) {
+        redirect(`/admin/planned-tasks?date=${returnDate}&message=${encoded("تم حفظ الموعد، لكن لم يتم إرسال إشعار العامل. يرجى المحاولة مرة أخرى.")}`);
+      }
     }
   }
 
-  await supabase
+  const { error: notificationError } = await supabase
     .from("admin_notifications")
     .update({ status: "resolved", read_at: new Date().toISOString() })
     .in("task_id", taskIds);
 
-  await supabase
+  if (notificationError) {
+    redirect(`/admin/planned-tasks?date=${returnDate}&message=${encoded("تم حفظ الموعد، لكن لم تكتمل إزالة المراجعة. يرجى المحاولة مرة أخرى.")}`);
+  }
+
+  const { error: reportApprovalError } = await supabase
     .from("non_execution_reports")
     .update({ approval_status: "approved", updated_at: new Date().toISOString() })
     .in("task_id", taskIds);
 
+  if (reportApprovalError) {
+    redirect(`/admin/planned-tasks?date=${returnDate}&message=${encoded("تم حفظ الموعد، لكن لم تكتمل إزالة المراجعة. يرجى المحاولة مرة أخرى.")}`);
+  }
+
   revalidatePath("/admin/planned-tasks");
+  revalidatePath("/admin/notifications");
   revalidatePath("/worker/tasks");
-  redirect(`/admin/planned-tasks?date=${newDate}&message=${encoded("تم تحديد موعد جديد للمهمة")}`);
+  revalidatePath("/worker/notifications");
+  redirect(`/admin/planned-tasks?date=${newDate}&message=${encoded("تم حفظ الموعد الجديد وتحديث الخطة بنجاح")}`);
 }
 
 export async function markAdminNotificationReadAction(formData: FormData) {
@@ -912,6 +962,14 @@ export async function updateAdhocExecutionAction(formData: FormData) {
 
   if (!user || !reportId) {
     redirect(`${returnTo}?message=${encoded("تعذر حفظ التقرير")}`);
+  }
+
+  if (!startedAt || !endedAt) {
+    redirect(`${returnTo}?message=${encoded("وقت البداية ووقت النهاية مطلوبان عند تسجيل تنفيذ المهمة")}`);
+  }
+
+  if (new Date(endedAt).getTime() < new Date(startedAt).getTime()) {
+    redirect(`${returnTo}?message=${encoded("وقت النهاية يجب أن يكون بعد وقت البداية")}`);
   }
 
   const { data: worker } = await supabase

@@ -1,5 +1,6 @@
 import { reschedulePlannedTaskGroupAction } from "@/app/auth/actions";
 import { AdminCompleteToggle } from "@/app/admin/planned-tasks/admin-complete-toggle";
+import { FlashToast } from "@/app/ui/flash-toast";
 import { AppShell, ContentCard, MetricCard, NavButton, PageHeader, StatusBadge } from "@/app/ui/shell";
 import { SubmitButton } from "@/app/ui/submit-button";
 import { getSaudiToday, SYSTEM_START_DATE } from "@/utils/operational-time";
@@ -158,11 +159,7 @@ export default async function PlannedTasksPage({
 
       <AreaTabs areas={areaTabs} selectedAreaCode={selectedAreaCode} selectedDate={selectedDate} />
 
-      {params.message ? (
-        <p className="mb-5 rounded-lg border border-[#bdd6ee] bg-[#eef6ff] p-3 text-sm font-semibold text-[#0b559f]">
-          {params.message}
-        </p>
-      ) : null}
+      <FlashToast message={params.message} />
 
       {tasksError ? (
         <ContentCard>
@@ -174,15 +171,15 @@ export default async function PlannedTasksPage({
             <MetricCard label="معدات مطلوبة" value={formatCount(total)} />
             <MetricCard label="أعمال داخلية" value={formatCount(internalTaskCount)} tone="warning" />
             <MetricCard label="تحتاج تعيين عامل" value={formatCount(unassignedCount)} tone="warning" />
-            <MetricCard label="أسباب عدم تنفيذ" value={formatCount(nonExecutionGroups.length)} tone="danger" />
+            <MetricCard label="مراجعات مطلوبة" value={formatCount(nonExecutionGroups.length)} tone="danger" />
           </section>
 
           {nonExecutionGroups.length ? (
             <ContentCard>
               <div className="mb-4 flex flex-col gap-2 border-b border-[#e2e8ef] pb-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-black">أسباب عدم التنفيذ بانتظار إعادة الجدولة</h2>
-                  <p className="mt-1 text-sm font-semibold text-[#607086]">كل كارت يمثل معدة لم يتم تنفيذ أعمالها، ويمكن تحديد موعد جديد لها.</p>
+                  <h2 className="text-lg font-black">مراجعات تحتاج موعداً جديداً</h2>
+                  <p className="mt-1 text-sm font-semibold text-[#607086]">راجع الملاحظات المسجلة وحدد موعداً مناسباً لاستكمال العمل.</p>
                 </div>
                 <StatusBadge tone="danger">{formatCount(nonExecutionGroups.length)}</StatusBadge>
               </div>
@@ -258,7 +255,7 @@ function NonExecutionCard({ group, returnDate }: { group: NonExecutionGroup; ret
       <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge tone="danger">لم تنفذ</StatusBadge>
+            <StatusBadge tone="danger">بحاجة لمراجعة</StatusBadge>
             <StatusBadge>{group.scheduledDate}</StatusBadge>
             <StatusBadge tone="neutral">{formatCount(group.reports.length)} أعمال داخلية</StatusBadge>
           </div>
@@ -272,9 +269,9 @@ function NonExecutionCard({ group, returnDate }: { group: NonExecutionGroup; ret
             <input key={report.id} type="hidden" name="task_ids" value={report.planned_tasks?.id ?? ""} />
           ))}
           <input type="hidden" name="return_date" value={returnDate} />
-          <input name="new_date" type="date" required className="rounded-lg border border-[#cbd7e3] bg-white px-3 py-2.5 text-sm font-bold outline-none" />
-          <input name="reason" placeholder="ملاحظة إعادة الجدولة" className="rounded-lg border border-[#cbd7e3] bg-white px-3 py-2.5 text-sm font-bold outline-none" />
-          <SubmitButton className="px-4 py-2.5" pendingText="جاري الحفظ">تحديد موعد</SubmitButton>
+          <input name="new_date" type="date" required defaultValue={group.scheduledDate} className="rounded-lg border border-[#cbd7e3] bg-white px-3 py-2.5 text-sm font-bold outline-none" />
+          <input name="reason" placeholder="ملاحظة اختيارية" className="rounded-lg border border-[#cbd7e3] bg-white px-3 py-2.5 text-sm font-bold outline-none" />
+          <SubmitButton className="px-4 py-2.5" pendingText="جاري الحفظ">اعتماد الموعد</SubmitButton>
         </form>
       </div>
       <div className="mt-3 grid gap-2">

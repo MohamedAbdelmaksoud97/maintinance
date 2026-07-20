@@ -12,8 +12,8 @@ export default async function WorkerNotificationsPage({
   const supabase = createClient(await cookies());
   const { data, error } = await supabase
     .from("notification_queue")
-    .select("id,notification_type,scheduled_for,sent_at,status,payload,planned_tasks(scheduled_date,equipment(equipment_code,name,areas(name)))")
-    .order("scheduled_for", { ascending: false })
+    .select("id,notification_type,created_at,scheduled_for,sent_at,status,payload,planned_tasks(scheduled_date,equipment(equipment_code,name,areas(name)))")
+    .order("created_at", { ascending: false })
     .limit(100);
 
   const notifications = (data ?? []) as unknown as WorkerNotification[];

@@ -103,8 +103,8 @@ function AdhocTaskCard({ report, today }: { report: AdhocReport; today: string }
         <form action={updateAdhocExecutionAction} encType="multipart/form-data" className="grid gap-3 border-t border-[#e2e8ef] pt-4 md:grid-cols-2">
           <input type="hidden" name="report_id" value={report.id} />
           <input type="hidden" name="return_to" value="/worker/ad-hoc-tasks" />
-          <Field name="started_at" type="datetime-local" label="وقت البداية" defaultValue={toLocalInput(report.started_at)} />
-          <Field name="ended_at" type="datetime-local" label="وقت النهاية" defaultValue={toLocalInput(report.ended_at)} />
+          <Field name="started_at" type="datetime-local" label="وقت البداية" defaultValue={toLocalInput(report.started_at)} required />
+          <Field name="ended_at" type="datetime-local" label="وقت النهاية" defaultValue={toLocalInput(report.ended_at)} required />
           <label className="block text-sm font-black text-[#324155] md:col-span-2">
             تفاصيل التنفيذ
             <textarea

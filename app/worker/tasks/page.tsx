@@ -193,8 +193,8 @@ function EquipmentTaskCard({ group, today, selectedDate }: { group: EquipmentTas
             <input type="hidden" name="return_date" value={selectedDate} />
             <p className="text-sm font-black text-[#324155]">تسجيل تنفيذ الكارت</p>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field name="started_at" type="datetime-local" label="وقت البداية" />
-              <Field name="completed_at" type="datetime-local" label="وقت النهاية" />
+              <Field name="started_at" type="datetime-local" label="وقت البداية" required />
+              <Field name="completed_at" type="datetime-local" label="وقت النهاية" required />
             </div>
             <label className="block text-sm font-black text-[#324155]">
               ملاحظات التنفيذ
