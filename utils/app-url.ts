@@ -18,8 +18,25 @@ function configuredOrigin() {
   return normalizeOrigin(APP_URL_ENV) ?? normalizeOrigin(process.env.VERCEL_URL);
 }
 
+function isLocalOrigin(origin: string | null) {
+  if (!origin) return false;
+
+  try {
+    const hostname = new URL(origin).hostname;
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
 export function appOrigin(requestOrigin?: string | null) {
-  return configuredOrigin() ?? normalizeOrigin(requestOrigin) ?? "http://localhost:3000";
+  const normalizedRequestOrigin = normalizeOrigin(requestOrigin);
+
+  if (normalizedRequestOrigin && isLocalOrigin(normalizedRequestOrigin)) {
+    return normalizedRequestOrigin;
+  }
+
+  return configuredOrigin() ?? normalizedRequestOrigin ?? "http://localhost:3000";
 }
 
 export function appPath(value: string | null | undefined) {
@@ -37,4 +54,3 @@ export function appPath(value: string | null | undefined) {
 export function appUrl(path = "/", requestOrigin?: string | null) {
   return new URL(appPath(path), appOrigin(requestOrigin)).toString();
 }
-

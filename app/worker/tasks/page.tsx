@@ -277,6 +277,7 @@ function EquipmentTaskCard({ group, today, selectedDate }: { group: EquipmentTas
               ملاحظات التنفيذ
               <textarea name="notes" rows={3} className="mt-2 w-full rounded-lg border border-[#cbd7e3] bg-white px-3 py-2.5 font-semibold outline-none" />
             </label>
+            <TaskExecutionDetails tasks={group.tasks} />
             <label className="block text-sm font-black text-[#324155]">
               صور التنفيذ
               <input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple className="mt-2 w-full rounded-lg border border-[#cbd7e3] bg-white px-3 py-2.5 font-semibold outline-none" />
@@ -304,6 +305,30 @@ function EquipmentTaskCard({ group, today, selectedDate }: { group: EquipmentTas
             <SubmitButton variant="danger" pendingText="جاري الإرسال">إرسال السبب للمدير</SubmitButton>
           </form>
         </div>
+      </div>
+    </details>
+  );
+}
+
+function TaskExecutionDetails({ tasks }: { tasks: TaskRow[] }) {
+  return (
+    <details className="rounded-lg border border-[#dbe3ea] bg-white">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-sm font-black text-[#324155] transition hover:bg-[#f3f7fb] [&::-webkit-details-marker]:hidden">
+        <span>تفاصيل التنفيذ لكل بند</span>
+        <ChevronDown className="h-4 w-4 text-[#607086]" aria-hidden="true" />
+      </summary>
+      <div className="grid gap-3 border-t border-[#e2e8ef] p-3">
+        {tasks.map((task, index) => (
+          <label key={task.id} className="block text-xs font-black text-[#324155]">
+            {workTypeLabel(task.maintenance_work_types?.code)} - {partLabel(task, index)}
+            <textarea
+              name={`task_note_${task.id}`}
+              rows={2}
+              placeholder="تفاصيل ما تم تنفيذه لهذا البند"
+              className="mt-2 w-full rounded-lg border border-[#cbd7e3] bg-[#fbfcfd] px-3 py-2.5 text-sm font-semibold outline-none transition focus:border-[#0b559f] focus:bg-white"
+            />
+          </label>
+        ))}
       </div>
     </details>
   );

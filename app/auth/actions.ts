@@ -96,10 +96,46 @@ export async function signInAction(formData: FormData) {
 
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) {
+    if (error.message.toLowerCase().includes("email not confirmed")) {
+      redirect(`/auth/verify-email?email=${encoded(email)}&message=${encoded("يجب تأكيد البريد الإلكتروني قبل استخدام النظام")}`);
+    }
+
     redirect(`/auth/login?message=${encoded("بيانات الدخول غير صحيحة أو الحساب لم يتم تأكيده بعد")}`);
   }
 
   redirect("/");
+}
+
+export async function resendConfirmationAction(formData: FormData) {
+  const formEmail = optionalText(formData.get("email"));
+  const origin = (await headers()).get("origin");
+  const supabase = createClient(await cookies());
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const email = user?.email ?? formEmail;
+
+  if (!email) {
+    redirect(`/auth/verify-email?message=${encoded("اكتب البريد الإلكتروني لإعادة إرسال رابط التفعيل")}`);
+  }
+
+  if (user?.email_confirmed_at) {
+    redirect(`/auth/login?message=${encoded("تم تأكيد البريد الإلكتروني بالفعل. يمكنك تسجيل الدخول الآن")}`);
+  }
+
+  const { error } = await supabase.auth.resend({
+    type: "signup",
+    email,
+    options: {
+      emailRedirectTo: appUrl("/auth/callback", origin),
+    },
+  });
+
+  if (error) {
+    redirect(`/auth/verify-email?email=${encoded(email)}&message=${encoded(error.message)}`);
+  }
+
+  redirect(`/auth/verify-email?email=${encoded(email)}&message=${encoded("تم إرسال رابط التفعيل مرة أخرى. افتح البريد الإلكتروني واضغط على رابط التأكيد")}`);
 }
 
 export async function resetPasswordAction(formData: FormData) {
@@ -126,7 +162,8 @@ export async function signOutAction() {
 
 export async function approveWorkerAction(formData: FormData) {
   const profileId = String(formData.get("profile_id") ?? "");
-  const workerId = optionalText(formData.get("worker_id"));
+  let workerId = optionalText(formData.get("worker_id"));
+  const fullName = optionalText(formData.get("full_name")) ?? "عامل";
   const approve = String(formData.get("approve") ?? "true") === "true";
   const areaIds = selectedValues(formData, "area_ids");
   const supabase = createClient(await cookies());
@@ -140,13 +177,45 @@ export async function approveWorkerAction(formData: FormData) {
     redirect(`/admin/workers?message=${encoded(error.message)}`);
   }
 
+  if (approve && !workerId) {
+    const { data: worker, error: workerError } = await supabase
+      .from("workers")
+      .insert({
+        profile_id: profileId,
+        full_name: fullName,
+        is_active: true,
+      })
+      .select("id")
+      .single();
+
+    if (workerError || !worker) {
+      redirect(`/admin/workers?message=${encoded(workerError?.message ?? "تعذر إنشاء سجل العامل")}`);
+    }
+
+    workerId = worker.id;
+  }
+
   if (approve && workerId) {
     const areaResult = await saveWorkerAreas(supabase, workerId, areaIds);
     if (areaResult) {
       redirect(`/admin/workers?message=${encoded(areaResult)}`);
     }
+
+    await supabase.from("notification_queue").insert({
+      worker_id: workerId,
+      notification_type: "account_approved",
+      scheduled_for: new Date().toISOString(),
+      payload: {
+        message_ar: areaIds.length
+          ? "تم اعتماد حسابك وتحديث مناطق العمل الخاصة بك. ستظهر المهام حسب المناطق المسندة إليك."
+          : "تم اعتماد حسابك. لم يتم تحديد مناطق عمل بعد، وسيتم إظهار المهام عند إسناد منطقة لك.",
+        area_count: areaIds.length,
+      },
+    });
   }
 
+  revalidatePath("/worker/notifications");
+  revalidatePath("/worker/tasks");
   redirect(`/admin/workers?message=${encoded(approve ? "تم اعتماد العامل" : "تم رفض العامل")}`);
 }
 
@@ -160,46 +229,29 @@ export async function updateWorkerAreasAction(formData: FormData) {
     redirect(`/admin/workers?message=${encoded(message)}`);
   }
 
+  await supabase.from("notification_queue").insert({
+    worker_id: workerId,
+    notification_type: "area_assignment_updated",
+    scheduled_for: new Date().toISOString(),
+    payload: {
+      message_ar: "تم تحديث مناطق العمل الخاصة بك. ستظهر المهام حسب المناطق المسندة إليك.",
+      area_count: areaIds.length,
+    },
+  });
+
+  revalidatePath("/worker/notifications");
+  revalidatePath("/worker/tasks");
   redirect(`/admin/workers?message=${encoded("تم حفظ مناطق العامل وتحديث مهام الخطة")}`);
 }
 
 async function saveWorkerAreas(supabase: ReturnType<typeof createClient>, workerId: string, areaIds: string[]) {
   if (!workerId) return "تعذر تحديد العامل";
 
-  const { error: deleteWorkerAreasError } = await supabase
-    .from("worker_area_assignments")
-    .delete()
-    .eq("worker_id", workerId);
-  if (deleteWorkerAreasError) return deleteWorkerAreasError.message;
-
-  if (areaIds.length) {
-    const { error: deleteMovedAreasError } = await supabase
-      .from("worker_area_assignments")
-      .delete()
-      .in("area_id", areaIds);
-    if (deleteMovedAreasError) return deleteMovedAreasError.message;
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    const { error: insertError } = await supabase.from("worker_area_assignments").insert(
-      areaIds.map((areaId) => ({
-        worker_id: workerId,
-        area_id: areaId,
-        assigned_by: user?.id ?? null,
-      })),
-    );
-    if (insertError) return insertError.message;
-
-    await supabase.from("workers").update({ default_area_id: areaIds[0] }).eq("id", workerId);
-  } else {
-    await supabase.from("workers").update({ default_area_id: null }).eq("id", workerId);
-  }
-
-  const { error: refreshError } = await supabase.rpc("refresh_area_worker_task_assignments", {
-    target_start: getSaudiToday(),
+  const { error } = await supabase.rpc("set_worker_area_assignments", {
+    target_worker_id: workerId,
+    target_area_ids: areaIds,
   });
-  if (refreshError) return refreshError.message;
+  if (error) return error.message;
 
   revalidatePath("/admin/workers");
   revalidatePath("/admin/planned-tasks");
@@ -425,6 +477,12 @@ export async function completePlannedTaskGroupAction(formData: FormData) {
     redirect(`/worker/tasks?date=${returnDate}&message=${encoded("لا توجد مهام داخل الكارت")}`);
   }
 
+  const taskDetails = taskIds.reduce<Record<string, string>>((details, taskId) => {
+    const value = optionalText(formData.get(`task_note_${taskId}`));
+    if (value) details[taskId] = value;
+    return details;
+  }, {});
+
   let photoPaths: string[] = [];
   try {
     photoPaths = await uploadTaskPhotos(supabase, `planned/${taskIds[0]}`, formData.getAll("photos"));
@@ -438,6 +496,7 @@ export async function completePlannedTaskGroupAction(formData: FormData) {
     completed_at_value: completedAt,
     notes_value: notes,
     photo_paths_value: photoPaths,
+    task_details_value: taskDetails,
   });
 
   if (error) {
@@ -445,7 +504,9 @@ export async function completePlannedTaskGroupAction(formData: FormData) {
   }
 
   revalidatePath("/worker/tasks");
+  revalidatePath("/worker/notifications");
   revalidatePath("/admin/planned-tasks");
+  revalidatePath("/admin/notifications");
   redirect(`/worker/tasks?date=${returnDate}&message=${encoded("تم حفظ تنفيذ كارت المعدة وتحديث الخطة")}`);
 }
 
@@ -627,6 +688,27 @@ export async function markAdminNotificationReadAction(formData: FormData) {
 
   revalidatePath("/admin/notifications");
   redirect(`/admin/notifications?message=${encoded("تم تعليم الإشعار كمقروء")}`);
+}
+
+export async function markWorkerNotificationReadAction(formData: FormData) {
+  const supabase = createClient(await cookies());
+  const notificationId = String(formData.get("notification_id") ?? "");
+
+  if (!notificationId) {
+    redirect(`/worker/notifications?message=${encoded("تعذر تحديد الإشعار")}`);
+  }
+
+  const { error } = await supabase.rpc("mark_worker_notification_read", {
+    target_notification_id: notificationId,
+  });
+
+  if (error) {
+    redirect(`/worker/notifications?message=${encoded(error.message)}`);
+  }
+
+  revalidatePath("/worker/notifications");
+  revalidatePath("/worker/tasks");
+  redirect(`/worker/notifications?message=${encoded("تم تعليم الإشعار كمطلع عليه")}`);
 }
 
 export async function upsertOilAction(formData: FormData) {
@@ -818,8 +900,8 @@ export async function createAdhocTaskAction(formData: FormData) {
 export async function updateAdhocExecutionAction(formData: FormData) {
   const supabase = createClient(await cookies());
   const reportId = String(formData.get("report_id") ?? "");
-  const startedAt = optionalText(formData.get("started_at"));
-  const endedAt = optionalText(formData.get("ended_at"));
+  const startedAt = toSaudiTimestamp(optionalText(formData.get("started_at")));
+  const endedAt = toSaudiTimestamp(optionalText(formData.get("ended_at")));
   const result = optionalText(formData.get("result"));
   const photos = formData.getAll("photos");
 
@@ -841,12 +923,6 @@ export async function updateAdhocExecutionAction(formData: FormData) {
     redirect(`/worker/tasks?message=${encoded("هذا الحساب غير مرتبط بعامل")}`);
   }
 
-  const { data: existing } = await supabase
-    .from("troubleshooting_reports")
-    .select("photo_paths")
-    .eq("id", reportId)
-    .maybeSingle();
-
   const uploadedPaths: string[] = [];
   for (const photo of photos) {
     if (typeof photo === "string" || !photo || !("size" in photo) || photo.size === 0) continue;
@@ -862,22 +938,19 @@ export async function updateAdhocExecutionAction(formData: FormData) {
     uploadedPaths.push(path);
   }
 
-  const currentPaths = Array.isArray(existing?.photo_paths) ? existing.photo_paths : [];
-  const { error } = await supabase
-    .from("troubleshooting_reports")
-    .update({
-      started_at: startedAt || null,
-      ended_at: endedAt || null,
-      result,
-      status: endedAt ? "completed" : "in_progress",
-      photo_paths: [...currentPaths, ...uploadedPaths],
-    })
-    .eq("id", reportId);
+  const { error } = await supabase.rpc("update_adhoc_execution_report", {
+    target_report_id: reportId,
+    started_at_value: startedAt,
+    ended_at_value: endedAt,
+    result_value: result,
+    photo_paths_value: uploadedPaths,
+  });
 
   if (error) {
     redirect(`/worker/tasks?message=${encoded(error.message)}`);
   }
 
   revalidatePath("/worker/tasks");
+  revalidatePath("/admin/notifications");
   redirect(`/worker/tasks?message=${encoded("تم حفظ تقرير المهمة العارضة")}`);
 }

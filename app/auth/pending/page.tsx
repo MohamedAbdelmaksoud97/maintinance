@@ -6,7 +6,7 @@ export default function PendingPage() {
   return (
     <AuthShell
       title="الحساب بانتظار الاعتماد"
-      description="تم تسجيل الحساب بنجاح، لكن لا يمكن استخدام النظام قبل اعتماد المدير. بعد الاعتماد ستظهر المهام اليومية حسب الصلاحية."
+      description="تم تأكيد البريد الإلكتروني بنجاح. الحساب الآن بانتظار اعتماد المدير، وبعد الاعتماد ستظهر المهام اليومية حسب الصلاحية."
     >
       <form action={signOutAction} className="mt-6">
         <SubmitButton className="w-full" pendingText="جاري الخروج">

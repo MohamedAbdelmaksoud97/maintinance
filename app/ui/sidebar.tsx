@@ -35,6 +35,7 @@ const adminNavItems = [
 
 const workerNavItems = [
   { href: "/worker/tasks", label: "مهامي", icon: ClipboardList },
+  { href: "/worker/notifications", label: "الإشعارات", icon: Bell },
 ];
 
 export function MobileMenuButton({ onClick }: { onClick: () => void }) {

@@ -1,3 +1,4 @@
+import { appUrl } from "@/utils/app-url";
 import { createClient } from "@/utils/supabase/middleware";
 import { type NextRequest, NextResponse } from "next/server";
 
@@ -8,6 +9,7 @@ const publicRoutes = [
   "/auth/callback",
   "/auth/confirm",
   "/auth/pending",
+  "/auth/verify-email",
 ];
 
 function withSessionCookies(response: NextResponse, sessionResponse: NextResponse) {
@@ -24,7 +26,7 @@ function redirectWithSession(
   path: string,
 ) {
   return withSessionCookies(
-    NextResponse.redirect(new URL(path, request.url)),
+    NextResponse.redirect(appUrl(path, request.nextUrl.origin)),
     sessionResponse,
   );
 }
@@ -47,6 +49,8 @@ export async function proxy(request: NextRequest) {
     return redirectWithSession(request, supabaseResponse, `/auth/login?next=${next}`);
   }
 
+  await supabase.rpc("ensure_worker_profile");
+
   const { data: profile } = await supabase
     .from("profiles")
     .select("role,approval_status,is_active")
@@ -56,8 +60,21 @@ export async function proxy(request: NextRequest) {
   const isApproved = profile?.approval_status === "approved" && profile?.is_active;
   const isAdmin = profile?.role === "admin" && isApproved;
   const isWorker = profile?.role === "worker" && isApproved;
+  const isEmailConfirmed = Boolean(user.email_confirmed_at);
 
   if (pathname.startsWith("/auth/callback") || pathname.startsWith("/auth/confirm")) {
+    return supabaseResponse;
+  }
+
+  if (pathname.startsWith("/auth/verify-email") && !isEmailConfirmed) {
+    return supabaseResponse;
+  }
+
+  if (!isEmailConfirmed) {
+    return redirectWithSession(request, supabaseResponse, "/auth/verify-email");
+  }
+
+  if (pathname.startsWith("/auth/pending") && !isApproved) {
     return supabaseResponse;
   }
 

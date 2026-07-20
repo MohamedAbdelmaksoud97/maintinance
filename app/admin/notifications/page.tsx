@@ -91,6 +91,8 @@ function NotificationCard({ notification }: { notification: AdminNotification })
   const task = notification.planned_tasks;
   const report = notification.non_execution_reports;
   const isPending = notification.status === "pending";
+  const payload = notification.payload ?? {};
+  const isReschedulable = isPending && notification.notification_type === "non_execution_reason" && Boolean(task?.id);
 
   return (
     <ContentCard>
@@ -102,25 +104,27 @@ function NotificationCard({ notification }: { notification: AdminNotification })
             <StatusBadge>{formatDateTime(notification.created_at)}</StatusBadge>
           </div>
           <h2 className="mt-3 text-lg font-black">
-            {task?.equipment?.equipment_code ?? "لايوجد"} - {task?.equipment?.name ?? "لايوجد"}
+            {task?.equipment?.equipment_code ?? valueText(payload.equipment_code) ?? "لايوجد"} - {task?.equipment?.name ?? valueText(payload.equipment_name) ?? valueText(payload.issue) ?? "لايوجد"}
           </h2>
           <p className="mt-1 text-sm font-semibold text-[#607086]">
-            المنطقة: {task?.equipment?.areas?.name ?? "لايوجد"} · تاريخ المهمة: {task?.scheduled_date ?? "لايوجد"}
+            المنطقة: {task?.equipment?.areas?.name ?? valueText(payload.area_name) ?? "لايوجد"} · تاريخ المهمة: {task?.scheduled_date ?? "لايوجد"}
           </p>
           <div className="mt-3 grid gap-2 md:grid-cols-2">
-            <Info label="العامل" value={report?.workers?.full_name ?? "لايوجد"} />
-            <Info label="وقت التسجيل" value={report?.created_at ? formatDateTime(report.created_at) : "لايوجد"} />
+            <Info label="العامل" value={report?.workers?.full_name ?? valueText(payload.worker_name) ?? "لايوجد"} />
+            <Info label="وقت التسجيل" value={formatDateTime(report?.created_at ?? notification.created_at)} />
           </div>
           <div className="mt-3 rounded-lg border border-[#e2e8ef] bg-[#f8fafc] p-3">
             <p className="text-xs font-black text-[#607086]">الرسالة / السبب</p>
             <p className="mt-1 text-sm font-bold text-[#172033]">
-              {report?.reason ?? valueText(notification.payload?.message_ar) ?? "لايوجد"}
+              {report?.reason ?? valueText(payload.result) ?? valueText(payload.task_details) ?? valueText(payload.message_ar) ?? "لايوجد"}
             </p>
+            {valueText(payload.notes) ? <p className="mt-2 text-xs font-bold text-[#607086]">ملاحظات عامة: {valueText(payload.notes)}</p> : null}
+            {typeof payload.photo_count === "number" ? <p className="mt-2 text-xs font-bold text-[#607086]">عدد الصور: {payload.photo_count.toLocaleString("ar-EG")}</p> : null}
           </div>
         </div>
 
         <div className="grid gap-2 xl:min-w-[360px]">
-          {isPending && task?.id ? (
+          {isReschedulable && task?.id ? (
             <form action={reschedulePlannedTaskGroupAction} className="grid gap-2 rounded-lg border border-[#dbe3ea] bg-[#fbfcfd] p-3">
               <input type="hidden" name="task_ids" value={task.id} />
               <input type="hidden" name="return_date" value={task.scheduled_date} />
@@ -166,6 +170,8 @@ function statusTone(value: string) {
 
 function notificationTypeLabel(value: string) {
   if (value === "non_execution_reason") return "سبب عدم تنفيذ";
+  if (value === "worker_completion") return "تنفيذ مهمة";
+  if (value === "adhoc_execution_update") return "تقرير مهمة عارضة";
   return "إشعار";
 }
 
