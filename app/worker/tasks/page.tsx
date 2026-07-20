@@ -1,5 +1,6 @@
-import { completePlannedTaskGroupAction, submitNonExecutionGroupAction, updateAdhocExecutionAction } from "@/app/auth/actions";
-import { AppShell, ContentCard, MetricCard, PageHeader, StatusBadge } from "@/app/ui/shell";
+import { completePlannedTaskGroupAction, submitNonExecutionGroupAction } from "@/app/auth/actions";
+import { FlashToast } from "@/app/ui/flash-toast";
+import { AppShell, MetricCard, PageHeader, StatusBadge } from "@/app/ui/shell";
 import { SubmitButton } from "@/app/ui/submit-button";
 import { getSaudiToday, SYSTEM_START_DATE } from "@/utils/operational-time";
 import { createClient } from "@/utils/supabase/server";
@@ -36,19 +37,6 @@ type TaskRow = {
   } | null;
   materials: { name: string; unit: string | null } | null;
   maintenance_work_types: { code: string; name: string } | null;
-};
-
-type AdhocReport = {
-  id: string;
-  issue: string;
-  priority: string;
-  status: string;
-  scheduled_date: string | null;
-  started_at: string | null;
-  ended_at: string | null;
-  result: string | null;
-  photo_paths: string[];
-  equipment: { equipment_code: string; name: string | null } | null;
 };
 
 type EquipmentTaskGroup = {
@@ -94,14 +82,8 @@ export default async function WorkerTasksPage({
     plannedTaskQuery.not("status_id", "in", `(${terminalStatusIds.join(",")})`);
   }
 
-  const [{ data: plannedTasks }, { data: adhocReports }, { data: notificationRows }] = await Promise.all([
+  const [{ data: plannedTasks }, { data: notificationRows }] = await Promise.all([
     plannedTaskQuery,
-    supabase
-      .from("troubleshooting_reports")
-      .select("id,issue,priority,status,scheduled_date,started_at,ended_at,result,photo_paths,equipment(equipment_code,name)")
-      .eq("scheduled_date", visibleDate)
-      .order("id", { ascending: true })
-      .limit(50),
     supabase
       .from("notification_queue")
       .select("id,notification_type,scheduled_for,status,payload")
@@ -113,7 +95,6 @@ export default async function WorkerTasksPage({
 
   const tasks = (plannedTasks ?? []) as unknown as TaskRow[];
   const equipmentGroups = groupByEquipment(tasks);
-  const adhoc = (adhocReports ?? []) as unknown as AdhocReport[];
   const notifications = (notificationRows ?? []) as unknown as NotificationRow[];
   const internalTaskCount = equipmentGroups.reduce((sum, group) => sum + group.tasks.length, 0);
 
@@ -132,78 +113,20 @@ export default async function WorkerTasksPage({
         <DayLink href={`/worker/tasks?date=${nextDate}`}>اليوم التالي</DayLink>
       </div>
 
-      {message ? (
-        <p className="mb-5 rounded-lg border border-[#bdd6ee] bg-[#eef6ff] p-3 text-sm font-semibold text-[#0b559f]">{message}</p>
-      ) : null}
+      <FlashToast message={message} />
 
-      <section className="mb-5 grid gap-3 sm:grid-cols-4">
+      <section className="mb-5 grid gap-3 sm:grid-cols-3">
         <MetricCard label="معدات مطلوبة" value={equipmentGroups.length} />
         <MetricCard label="أعمال داخلية" value={internalTaskCount} tone="warning" />
-        <MetricCard label="مهام عارضة" value={adhoc.length} tone="warning" />
         <MetricCard label="إشعارات اليوم" value={notifications.length} tone="success" />
       </section>
 
-      {notifications.length ? (
-        <section className="mb-5 grid gap-2">
-          {notifications.map((notification) => (
-            <div key={notification.id} className="rounded-lg border border-[#bdd6ee] bg-[#eef6ff] p-3 text-sm font-bold text-[#0b559f]">
-              {valueText(notification.payload?.message_ar) || notificationLabel(notification.notification_type)}
-            </div>
-          ))}
-        </section>
-      ) : null}
-
-      <SectionTitle title="مهام الخطة حسب المعدة" count={equipmentGroups.length} />
+      <SectionTitle title="مهام الخطة حسب المعدة" count={equipmentGroups.length} description="مهام التاريخ المحدد مجمعة حسب المعدة لتقليل الزحمة أثناء التنفيذ." />
       <section className="grid gap-3">
         {equipmentGroups.map((group) => (
           <EquipmentTaskCard key={group.id} group={group} today={today} selectedDate={visibleDate} />
         ))}
-      </section>
-
-      <SectionTitle title="المهام العارضة" count={adhoc.length} />
-      <section className="grid gap-3">
-        {adhoc.map((report) => (
-          <ContentCard key={report.id}>
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <StatusBadge tone={report.scheduled_date === today ? "warning" : "neutral"}>
-                      {report.scheduled_date === today ? "اليوم" : report.scheduled_date ?? "-"}
-                    </StatusBadge>
-                    <StatusBadge>{priorityLabel(report.priority)}</StatusBadge>
-                    <StatusBadge tone={report.status === "completed" ? "success" : "neutral"}>{statusLabel(report.status)}</StatusBadge>
-                  </div>
-                  <h2 className="mt-3 text-xl font-black">{report.issue}</h2>
-                  <p className="mt-1 text-sm text-[#607086]">
-                    {report.equipment?.equipment_code ?? "-"} - {report.equipment?.name ?? "معدة"}
-                  </p>
-                </div>
-                <Info label="الصور المرفوعة" value={(report.photo_paths?.length ?? 0).toLocaleString("ar-EG")} />
-              </div>
-
-              <form action={updateAdhocExecutionAction} encType="multipart/form-data" className="grid gap-3 border-t border-[#e2e8ef] pt-4 md:grid-cols-2">
-                <input type="hidden" name="report_id" value={report.id} />
-                <Field name="started_at" type="datetime-local" label="وقت البداية" defaultValue={toLocalInput(report.started_at)} />
-                <Field name="ended_at" type="datetime-local" label="وقت النهاية" defaultValue={toLocalInput(report.ended_at)} />
-                <label className="block text-sm font-black text-[#324155] md:col-span-2">
-                  نتيجة التنفيذ
-                  <textarea name="result" rows={3} defaultValue={report.result ?? ""} className="mt-2 w-full rounded-lg border border-[#cbd7e3] bg-white px-3 py-2.5 font-semibold outline-none" />
-                </label>
-                <label className="block text-sm font-black text-[#324155]">
-                  صور التنفيذ
-                  <input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple className="mt-2 w-full rounded-lg border border-[#cbd7e3] bg-white px-3 py-2.5 font-semibold outline-none" />
-                </label>
-                <SubmitButton className="self-end px-5" pendingText="جاري الحفظ">حفظ تقرير المهمة</SubmitButton>
-              </form>
-            </div>
-          </ContentCard>
-        ))}
-        {!equipmentGroups.length && !adhoc.length ? (
-          <ContentCard>
-            <p className="text-sm font-semibold text-[#607086]">لا توجد مهام مسندة ظاهرة لهذا الحساب.</p>
-          </ContentCard>
-        ) : null}
+        {!equipmentGroups.length ? <SoftEmptyState text="لا توجد مهام مخططة ظاهرة لهذا التاريخ." /> : null}
       </section>
     </AppShell>
   );
@@ -375,11 +298,22 @@ function WorkSection({ title, tasks, mode }: { title: string; tasks: TaskRow[]; 
   );
 }
 
-function SectionTitle({ title, count }: { title: string; count: number }) {
+function SectionTitle({ title, count, description }: { title: string; count: number; description?: string }) {
   return (
-    <div className="mb-3 mt-6 flex items-center justify-between">
-      <h2 className="text-lg font-black">{title}</h2>
+    <div className="mb-3 mt-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h2 className="text-lg font-black">{title}</h2>
+        {description ? <p className="mt-1 text-xs font-bold leading-5 text-[#607086]">{description}</p> : null}
+      </div>
       <StatusBadge>{count.toLocaleString("ar-EG")}</StatusBadge>
+    </div>
+  );
+}
+
+function SoftEmptyState({ text }: { text: string }) {
+  return (
+    <div className="rounded-lg border border-dashed border-[#cbd7e3] bg-white p-5 text-center shadow-sm">
+      <p className="text-sm font-semibold text-[#607086]">{text}</p>
     </div>
   );
 }
@@ -469,32 +403,6 @@ function workTypeLabel(value?: string | null) {
   if (value === "greasing") return "إضافة شحم";
   if (value === "grease_change") return "تغيير شحم";
   return "مهمة صيانة";
-}
-
-function priorityLabel(value: string) {
-  if (value === "urgent") return "عاجلة";
-  if (value === "high") return "عالية";
-  if (value === "low") return "منخفضة";
-  return "عادية";
-}
-
-function statusLabel(value: string) {
-  if (value === "completed") return "مكتملة";
-  if (value === "in_progress") return "قيد التنفيذ";
-  if (value === "cancelled") return "ملغاة";
-  return "مفتوحة";
-}
-
-function notificationLabel(value: string) {
-  if (value === "daily_task") return "لديك مهمة صيانة اليوم";
-  if (value === "rescheduled_task") return "تم تحديد موعد جديد لمهمة صيانة";
-  if (value === "adhoc_task") return "تم إسناد مهمة عارضة جديدة لك";
-  return "إشعار جديد";
-}
-
-function toLocalInput(value?: string | null) {
-  if (!value) return "";
-  return value.slice(0, 16);
 }
 
 function valueText(value: unknown) {

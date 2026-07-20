@@ -900,6 +900,7 @@ export async function createAdhocTaskAction(formData: FormData) {
 export async function updateAdhocExecutionAction(formData: FormData) {
   const supabase = createClient(await cookies());
   const reportId = String(formData.get("report_id") ?? "");
+  const returnTo = optionalText(formData.get("return_to")) ?? "/worker/ad-hoc-tasks";
   const startedAt = toSaudiTimestamp(optionalText(formData.get("started_at")));
   const endedAt = toSaudiTimestamp(optionalText(formData.get("ended_at")));
   const result = optionalText(formData.get("result"));
@@ -910,7 +911,7 @@ export async function updateAdhocExecutionAction(formData: FormData) {
   } = await supabase.auth.getUser();
 
   if (!user || !reportId) {
-    redirect(`/worker/tasks?message=${encoded("تعذر حفظ التقرير")}`);
+    redirect(`${returnTo}?message=${encoded("تعذر حفظ التقرير")}`);
   }
 
   const { data: worker } = await supabase
@@ -920,7 +921,7 @@ export async function updateAdhocExecutionAction(formData: FormData) {
     .maybeSingle();
 
   if (!worker) {
-    redirect(`/worker/tasks?message=${encoded("هذا الحساب غير مرتبط بعامل")}`);
+    redirect(`${returnTo}?message=${encoded("هذا الحساب غير مرتبط بعامل")}`);
   }
 
   const uploadedPaths: string[] = [];
@@ -933,7 +934,7 @@ export async function updateAdhocExecutionAction(formData: FormData) {
       upsert: false,
     });
     if (uploadError) {
-      redirect(`/worker/tasks?message=${encoded(uploadError.message)}`);
+      redirect(`${returnTo}?message=${encoded(uploadError.message)}`);
     }
     uploadedPaths.push(path);
   }
@@ -947,10 +948,10 @@ export async function updateAdhocExecutionAction(formData: FormData) {
   });
 
   if (error) {
-    redirect(`/worker/tasks?message=${encoded(error.message)}`);
+    redirect(`${returnTo}?message=${encoded(error.message)}`);
   }
 
-  revalidatePath("/worker/tasks");
+  revalidatePath("/worker/ad-hoc-tasks");
   revalidatePath("/admin/notifications");
-  redirect(`/worker/tasks?message=${encoded("تم حفظ تقرير المهمة العارضة")}`);
+  redirect(`${returnTo}?message=${encoded("تم حفظ تقرير المهمة العارضة")}`);
 }

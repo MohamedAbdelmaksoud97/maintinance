@@ -1,25 +1,7 @@
-import { markWorkerNotificationReadAction } from "@/app/auth/actions";
 import { AppShell, ContentCard, MetricCard, PageHeader, StatusBadge } from "@/app/ui/shell";
-import { SubmitButton } from "@/app/ui/submit-button";
+import { WorkerNotificationsRealtimeList, type WorkerNotification } from "@/app/ui/live-notification-list";
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
-
-type WorkerNotification = {
-  id: string;
-  notification_type: string;
-  scheduled_for: string;
-  sent_at: string | null;
-  status: string;
-  payload: Record<string, unknown> | null;
-  planned_tasks: {
-    scheduled_date: string;
-    equipment: {
-      equipment_code: string | null;
-      name: string | null;
-      areas: { name: string | null } | null;
-    } | null;
-  } | null;
-};
 
 export default async function WorkerNotificationsPage({
   searchParams,
@@ -65,87 +47,8 @@ export default async function WorkerNotificationsPage({
           <p className="text-sm font-bold text-[#c1121f]">تعذر تحميل الإشعارات الآن.</p>
         </ContentCard>
       ) : (
-        <section className="grid gap-3">
-          {notifications.map((notification) => (
-            <NotificationCard key={notification.id} notification={notification} />
-          ))}
-          {!notifications.length ? (
-            <ContentCard>
-              <p className="text-sm font-semibold text-[#607086]">لا توجد إشعارات حتى الآن.</p>
-            </ContentCard>
-          ) : null}
-        </section>
+        <WorkerNotificationsRealtimeList initialNotifications={notifications} />
       )}
     </AppShell>
   );
-}
-
-function NotificationCard({ notification }: { notification: WorkerNotification }) {
-  const task = notification.planned_tasks;
-  const payload = notification.payload ?? {};
-  const unread = notification.status === "pending";
-
-  return (
-    <ContentCard>
-      <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-start">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge tone={notification.status === "pending" ? "warning" : "neutral"}>{statusLabel(notification.status)}</StatusBadge>
-            <StatusBadge tone="neutral">{notificationTypeLabel(notification.notification_type)}</StatusBadge>
-            <StatusBadge>{formatDateTime(notification.scheduled_for)}</StatusBadge>
-          </div>
-          <h2 className="mt-3 break-words text-lg font-black text-[#172033]">
-            {valueText(payload.message_ar) || notificationTypeLabel(notification.notification_type)}
-          </h2>
-          <p className="mt-1 text-sm font-semibold text-[#607086]">
-            {task
-              ? `${task.equipment?.equipment_code ?? "-"} - ${task.equipment?.name ?? "معدة"} · ${task.equipment?.areas?.name ?? "-"} · ${task.scheduled_date}`
-              : valueText(payload.issue) || "إشعار عام"}
-          </p>
-        </div>
-        <div className="grid gap-2 lg:min-w-[150px]">
-          <StatusBadge tone={notification.notification_type === "adhoc_task" ? "danger" : "success"}>
-            {notification.notification_type === "adhoc_task" ? "مهمة عارضة" : "متابعة"}
-          </StatusBadge>
-          {unread ? (
-            <form action={markWorkerNotificationReadAction}>
-              <input type="hidden" name="notification_id" value={notification.id} />
-              <SubmitButton variant="secondary" className="w-full px-3 py-2 text-xs" pendingText="جاري الحفظ">
-                تم الاطلاع
-              </SubmitButton>
-            </form>
-          ) : null}
-        </div>
-      </div>
-    </ContentCard>
-  );
-}
-
-function notificationTypeLabel(value: string) {
-  if (value === "daily_task") return "مهمة يومية";
-  if (value === "rescheduled_task") return "إعادة جدولة";
-  if (value === "adhoc_task") return "مهمة عارضة";
-  if (value === "account_approved") return "اعتماد الحساب";
-  if (value === "area_assignment_updated") return "تحديث المناطق";
-  return "إشعار جديد";
-}
-
-function statusLabel(value: string) {
-  if (value === "sent") return "تم الإرسال";
-  if (value === "failed") return "تعذر الإرسال";
-  if (value === "cancelled") return "ملغي";
-  return "جديد";
-}
-
-function valueText(value: unknown) {
-  if (value === null || value === undefined || value === "") return null;
-  return String(value);
-}
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("ar-EG", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Asia/Riyadh",
-  }).format(new Date(value));
 }

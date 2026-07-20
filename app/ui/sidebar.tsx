@@ -18,6 +18,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
+import { NotificationRealtimeBadge } from "@/app/ui/notification-realtime";
 
 type NavigationScope = "admin" | "worker";
 
@@ -35,6 +36,7 @@ const adminNavItems = [
 
 const workerNavItems = [
   { href: "/worker/tasks", label: "مهامي", icon: ClipboardList },
+  { href: "/worker/ad-hoc-tasks", label: "المهام العارضة", icon: Wrench },
   { href: "/worker/notifications", label: "الإشعارات", icon: Bell },
 ];
 
@@ -94,6 +96,9 @@ function SidebarContent({ onNavigate, scope }: { onNavigate?: () => void; scope:
             >
               <Icon size={19} strokeWidth={2.4} />
               <span>{item.label}</span>
+              {item.href.endsWith("/notifications") ? (
+                <NotificationRealtimeBadge scope={scope} active={active} />
+              ) : null}
             </Link>
           );
         })}
