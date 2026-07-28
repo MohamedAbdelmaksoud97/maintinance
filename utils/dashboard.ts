@@ -45,7 +45,7 @@ async function countRows(
     query = query.eq("quality_status", filter.value);
   }
   if (filter?.kind === "unassigned") {
-    query = query.is("main_worker_id", null).gte("scheduled_date", SYSTEM_START_DATE);
+    query = query.is("main_worker_id", null).gte("scheduled_date", SYSTEM_START_DATE).is("completed_at", null);
   }
   if (filter?.kind === "missed") {
     query = query
@@ -63,13 +63,13 @@ async function countRows(
     query = query.in("stock_status", ["LOW", "REORDER"]);
   }
   if (filter?.kind === "scheduledRange") {
-    query = query.gte("scheduled_date", filter.start);
+    query = query.gte("scheduled_date", filter.start).is("completed_at", null);
     if (filter.end) {
       query = query.lt("scheduled_date", filter.end);
     }
   }
   if (filter?.kind === "shutdownTasks") {
-    query = query.gte("scheduled_date", filter.start).eq("execution_condition", "shutdown");
+    query = query.gte("scheduled_date", filter.start).eq("execution_condition", "shutdown").is("completed_at", null);
   }
 
   const { count, error } = await query;
@@ -137,7 +137,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     countRows(supabase, "planned_tasks", { kind: "scheduledRange", start: today, end: next7Days }, oldStatusId),
     countRows(supabase, "planned_tasks", { kind: "scheduledRange", start: today, end: next30Days }, oldStatusId),
     countRows(supabase, "planned_tasks", { kind: "shutdownTasks", start: today }, oldStatusId),
-    countRows(supabase, "materials"),
+    countRows(supabase, "material_stock_alerts"),
     countMainEquipment(supabase),
     countRows(supabase, "profiles", { kind: "pendingWorkers" }),
     countRows(supabase, "notification_queue", {

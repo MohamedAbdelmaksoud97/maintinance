@@ -490,6 +490,11 @@ export async function completePlannedTaskGroupAction(formData: FormData) {
     if (value) details[taskId] = value;
     return details;
   }, {});
+  const materialUsage = taskIds.reduce<Record<string, number>>((usage, taskId) => {
+    const value = optionalNumber(formData.get(`material_quantity_${taskId}`));
+    if (value !== null) usage[taskId] = value;
+    return usage;
+  }, {});
 
   let photoPaths: string[] = [];
   try {
@@ -505,6 +510,7 @@ export async function completePlannedTaskGroupAction(formData: FormData) {
     notes_value: notes,
     photo_paths_value: photoPaths,
     task_details_value: taskDetails,
+    material_usage_value: materialUsage,
   });
 
   if (error) {
@@ -761,19 +767,34 @@ export async function markWorkerNotificationReadAction(formData: FormData) {
   redirect(`/worker/notifications?message=${encoded("تم تعليم الإشعار كمطلع عليه")}`);
 }
 
-export async function upsertOilAction(formData: FormData) {
+export async function upsertMaterialAction(formData: FormData) {
   const supabase = createClient(await cookies());
   const materialId = optionalText(formData.get("material_id"));
   const returnTo = optionalText(formData.get("return_to"));
+  const materialKind = String(formData.get("material_kind") ?? "oil").trim() === "grease" ? "grease" : "oil";
+  let currentOriginalValues: Record<string, unknown> = {};
+  if (materialId) {
+    const { data: currentMaterial } = await supabase
+      .from("materials")
+      .select("original_values")
+      .eq("id", materialId)
+      .maybeSingle();
+    currentOriginalValues = (currentMaterial?.original_values as Record<string, unknown> | null) ?? {};
+  }
   const payload = {
-    material_kind: "oil",
+    material_kind: materialKind,
     code: optionalText(formData.get("code")),
     name: String(formData.get("name") ?? "").trim(),
     brand: optionalText(formData.get("brand")),
     grade: optionalText(formData.get("grade")),
-    unit: optionalText(formData.get("unit")) ?? "L",
+    unit: optionalText(formData.get("unit")) ?? (materialKind === "grease" ? "KG" : "L"),
     minimum_stock: optionalNumber(formData.get("minimum_stock")),
     reorder_level: optionalNumber(formData.get("reorder_level")),
+    original_values: {
+      ...currentOriginalValues,
+      source_mode: currentOriginalValues.source_mode ?? "manual_inventory_material",
+      manual_inventory_edited_at: new Date().toISOString(),
+    },
     data_quality_status: "COMPLETE",
   };
 
@@ -791,10 +812,67 @@ export async function upsertOilAction(formData: FormData) {
   }
 
   revalidatePath("/admin/oils");
+  revalidatePath("/admin/materials");
   if (returnTo) {
     redirect(`${returnTo}?message=${encoded(materialId ? "تم تحديث الزيت" : "تم إضافة الزيت")}`);
   }
   redirect(`/admin/oils?message=${encoded(materialId ? "تم تحديث الزيت" : "تم إضافة الزيت")}`);
+}
+
+export async function upsertOilAction(formData: FormData) {
+  formData.set("material_kind", "oil");
+  await upsertMaterialAction(formData);
+}
+
+export async function createMaterialPurchaseAction(formData: FormData) {
+  const supabase = createClient(await cookies());
+  const materialId = String(formData.get("material_id") ?? "");
+  const returnTo = optionalText(formData.get("return_to")) ?? (materialId ? `/admin/materials/${materialId}` : "/admin/materials");
+  const quantity = optionalNumber(formData.get("quantity"));
+  const unit = optionalText(formData.get("unit"));
+  const unitPrice = optionalNumber(formData.get("unit_price"));
+  const notes = optionalText(formData.get("notes"));
+  const transactionDate = toSaudiTimestamp(optionalText(formData.get("transaction_date"))) ?? new Date().toISOString();
+
+  if (!materialId || quantity === null || quantity <= 0) {
+    redirect(`${returnTo}?message=${encoded("الكمية المشتراة مطلوبة ويجب أن تكون أكبر من صفر")}`);
+  }
+
+  const { error } = await supabase.from("inventory_transactions").insert({
+    material_id: materialId,
+    transaction_type: "purchase",
+    quantity,
+    unit,
+    unit_price: unitPrice,
+    transaction_date: transactionDate,
+    source_type: "manual_purchase",
+    notes,
+  });
+
+  if (error) {
+    redirect(`${returnTo}?message=${encoded(error.message)}`);
+  }
+
+  const { data: stockStatus } = await supabase
+    .from("material_stock_alerts")
+    .select("stock_status")
+    .eq("material_id", materialId)
+    .maybeSingle();
+
+  if (stockStatus?.stock_status === "OK") {
+    await supabase
+      .from("admin_notifications")
+      .update({ status: "resolved", read_at: new Date().toISOString() })
+      .eq("notification_type", "material_low_stock")
+      .eq("status", "pending")
+      .eq("payload->>material_id", materialId);
+  }
+
+  revalidatePath("/");
+  revalidatePath("/admin/materials");
+  revalidatePath(`/admin/materials/${materialId}`);
+  revalidatePath(`/admin/oils/${materialId}`);
+  redirect(`${returnTo}?message=${encoded("تمت إضافة الكمية المشتراة وتحديث المخزون")}`);
 }
 
 export async function upsertEquipmentAction(formData: FormData) {

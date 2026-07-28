@@ -28,7 +28,7 @@ const adminNavItems = [
   { href: "/admin/reports", label: "التقارير", icon: FileSpreadsheet },
   { href: "/admin/notifications", label: "إشعارات المدير", icon: Bell },
   { href: "/admin/data-completion", label: "بيانات تحتاج استكمال", icon: ListChecks },
-  { href: "/admin/oils", label: "الزيوت", icon: PackagePlus },
+  { href: "/admin/materials", label: "المخزون", icon: PackagePlus },
   { href: "/admin/equipment", label: "المعدات", icon: Boxes },
   { href: "/admin/ad-hoc-tasks", label: "مهمة عارضة", icon: Wrench },
   { href: "/admin/workers", label: "العمال", icon: UserCheck },

@@ -2,11 +2,20 @@ import { signOutAction } from "@/app/auth/actions";
 import { AppShell, ContentCard, MetricCard, PageHeader } from "@/app/ui/shell";
 import { SubmitButton } from "@/app/ui/submit-button";
 import { getDashboardSummary } from "@/utils/dashboard";
+import { createClient } from "@/utils/supabase/server";
+import { cookies } from "next/headers";
 
 type Tone = "neutral" | "success" | "warning" | "danger";
 
 export default async function Page() {
   const summary = await getDashboardSummary();
+  const supabase = createClient(await cookies());
+  const { data: lowStockRows } = await supabase
+    .from("material_stock_alerts")
+    .select("material_id,material_kind,name,unit,stock_quantity,stock_status")
+    .in("stock_status", ["LOW", "REORDER"])
+    .order("stock_quantity", { ascending: true })
+    .limit(6);
   const maxPlanValue = Math.max(summary.dueToday, summary.dueNext7Days, summary.dueNext30Days, summary.shutdownTasks, 1);
   const maxAssetValue = Math.max(summary.equipment, summary.materials, summary.lowStockMaterials, 1);
 
@@ -75,6 +84,31 @@ export default async function Page() {
             <StatTile label="قادم خلال أسبوع" value={summary.dueNext7Days} tone="neutral" />
             <StatTile label="قادم خلال شهر" value={summary.dueNext30Days} tone="success" />
             <StatTile label="مهام أثناء التوقف" value={summary.shutdownTasks} tone="danger" />
+          </div>
+        </ContentCard>
+      </section>
+
+      <section className="mt-5">
+        <ContentCard>
+          <div>
+            <p className="text-xs font-black text-[#0b559f]">المخزون الآن</p>
+            <h2 className="mt-1 text-xl font-black">زيوت وشحم تحتاج متابعة</h2>
+          </div>
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {(lowStockRows ?? []).map((item) => (
+              <div key={item.material_id} className="rounded-lg border border-[#e2e8ef] bg-[#f8fafc] p-4">
+                <p className="text-xs font-black text-[#607086]">{item.material_kind === "grease" ? "شحم" : "زيت"}</p>
+                <p className="mt-1 break-words text-sm font-black text-[#172033]">{item.name}</p>
+                <p className="mt-3 text-2xl font-black text-[#a16207]">
+                  {formatNumber(Number(item.stock_quantity ?? 0))} {item.unit ?? ""}
+                </p>
+              </div>
+            ))}
+            {lowStockRows?.length ? null : (
+              <div className="rounded-lg border border-[#e2e8ef] bg-[#f8fafc] p-4">
+                <p className="text-sm font-bold text-[#207a45]">لا توجد مواد منخفضة المخزون حاليًا.</p>
+              </div>
+            )}
           </div>
         </ContentCard>
       </section>

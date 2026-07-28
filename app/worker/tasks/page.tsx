@@ -35,7 +35,7 @@ type TaskRow = {
     last_grease_date: string | null;
     original_values: Record<string, unknown> | null;
   } | null;
-  materials: { name: string; unit: string | null } | null;
+  materials: { name: string; unit: string | null; material_kind: string | null } | null;
   maintenance_work_types: { code: string; name: string } | null;
 };
 
@@ -73,7 +73,7 @@ export default async function WorkerTasksPage({
   const plannedTaskQuery = supabase
       .from("planned_tasks")
       .select(
-        "id,scheduled_date,planned_quantity,planned_quantity_unit,execution_condition,original_values,equipment(id,equipment_code,name,area_id,areas(name),production_lines(line_code,name)),maintenance_points(point_name,part_description,execution_condition,running_hours_per_day,frequency_days,frequency_hours,last_change_date,last_inspection_date,last_grease_date,original_values),materials(name,unit),maintenance_work_types(code,name)",
+        "id,scheduled_date,planned_quantity,planned_quantity_unit,execution_condition,original_values,equipment(id,equipment_code,name,area_id,areas(name),production_lines(line_code,name)),maintenance_points(point_name,part_description,execution_condition,running_hours_per_day,frequency_days,frequency_hours,last_change_date,last_inspection_date,last_grease_date,original_values),materials(name,unit,material_kind),maintenance_work_types(code,name)",
       )
       .eq("scheduled_date", visibleDate)
       .order("id", { ascending: true })
@@ -177,6 +177,7 @@ function EquipmentTaskCard({ group, today, selectedDate }: { group: EquipmentTas
         </div>
 
         <MaterialsSummary tasks={group.tasks} />
+        <MaterialUnitWarnings tasks={group.tasks} />
 
         <div className="mt-4 grid gap-3">
           {inspection.length ? <WorkSection title="فحص" tasks={inspection} mode="inspection" /> : null}
@@ -200,6 +201,7 @@ function EquipmentTaskCard({ group, today, selectedDate }: { group: EquipmentTas
               ملاحظات التنفيذ
               <textarea name="notes" rows={3} className="mt-2 w-full rounded-lg border border-[#cbd7e3] bg-white px-3 py-2.5 font-semibold outline-none" />
             </label>
+            <MaterialUsageFields tasks={group.tasks} />
             <TaskExecutionDetails tasks={group.tasks} />
             <label className="block text-sm font-black text-[#324155]">
               صور التنفيذ
@@ -254,6 +256,55 @@ function TaskExecutionDetails({ tasks }: { tasks: TaskRow[] }) {
         ))}
       </div>
     </details>
+  );
+}
+
+function MaterialUsageFields({ tasks }: { tasks: TaskRow[] }) {
+  const usageTasks = tasks.filter(needsWorkerMaterialQuantity);
+  if (!usageTasks.length) return null;
+
+  return (
+    <div className="rounded-lg border border-[#f3d18b] bg-[#fff9ed] p-4">
+      <p className="text-sm font-black text-[#8a5a05]">كميات الزيوت والشحم المستخدمة</p>
+      <p className="mt-1 text-xs font-bold leading-5 text-[#8a5a05]">
+        هذه الكمية مطلوبة لأن البند لا يحتوي على كمية مخططة، وسيتم خصمها من المخزون عند حفظ التنفيذ.
+      </p>
+      <div className="mt-3 grid gap-3">
+        {usageTasks.map((task, index) => (
+          <Field
+            key={`material-${task.id}`}
+            name={`material_quantity_${task.id}`}
+            type="number"
+            min="0.001"
+            step="0.001"
+            label={`الكمية المستخدمة - ${partLabel(task, index)} (${task.materials?.unit ?? task.planned_quantity_unit ?? ""})`}
+            required
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MaterialUnitWarnings({ tasks }: { tasks: TaskRow[] }) {
+  const warnings = tasks.filter((task) => {
+    const taskUnit = task.planned_quantity_unit?.trim();
+    const materialUnit = task.materials?.unit?.trim();
+    return Boolean(taskUnit && materialUnit && taskUnit !== materialUnit);
+  });
+  if (!warnings.length) return null;
+
+  return (
+    <div className="mt-4 rounded-lg border border-[#f3d18b] bg-[#fff9ed] p-4">
+      <p className="text-sm font-black text-[#8a5a05]">تنبيه اختلاف وحدة</p>
+      <div className="mt-2 grid gap-1 text-xs font-bold leading-5 text-[#8a5a05]">
+        {warnings.map((task) => (
+          <p key={task.id}>
+            {task.materials?.name ?? "-"}: وحدة الخطة {task.planned_quantity_unit} ووحدة المخزون {task.materials?.unit}
+          </p>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -441,6 +492,11 @@ function quantityLabel(task: TaskRow) {
   const unit = task.planned_quantity_unit || task.materials?.unit || "";
   if (typeof task.planned_quantity !== "number") return unit ? `- ${unit}` : "-";
   return `${task.planned_quantity.toLocaleString("ar-EG")} ${unit}`;
+}
+
+function needsWorkerMaterialQuantity(task: TaskRow) {
+  const workType = task.maintenance_work_types?.code;
+  return Boolean(task.materials?.name && (workType === "greasing" || workType === "oil_change" || workType === "grease_change") && typeof task.planned_quantity !== "number");
 }
 
 function validDate(value?: string) {

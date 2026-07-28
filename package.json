@@ -3,10 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "node scripts/next-safe.cjs dev --webpack",
+    "build": "node scripts/next-safe.cjs build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "import:stock": "node scripts/import_oils_greases_stock.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
