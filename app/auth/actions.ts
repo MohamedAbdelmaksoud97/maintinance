@@ -38,6 +38,22 @@ function selectedValues(formData: FormData, name: string) {
     .filter(Boolean);
 }
 
+function taskExecutionDetail(formData: FormData, taskId: string) {
+  const checklist = selectedValues(formData, `inspection_check_${taskId}`);
+  const note = optionalText(formData.get(`task_note_${taskId}`));
+  const parts: string[] = [];
+
+  if (checklist.length) {
+    parts.push(`نتيجة الفحص: ${checklist.join("، ")}`);
+  }
+
+  if (note) {
+    parts.push(note);
+  }
+
+  return parts.join("\n");
+}
+
 function toSaudiTimestamp(value: string | null) {
   if (!value) return null;
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return `${value}:00+03:00`;
@@ -486,7 +502,7 @@ export async function completePlannedTaskGroupAction(formData: FormData) {
   }
 
   const taskDetails = taskIds.reduce<Record<string, string>>((details, taskId) => {
-    const value = optionalText(formData.get(`task_note_${taskId}`));
+    const value = taskExecutionDetail(formData, taskId);
     if (value) details[taskId] = value;
     return details;
   }, {});

@@ -55,6 +55,21 @@ type NotificationRow = {
 };
 
 const workTypeOrder = ["inspection", "greasing", "oil_change", "grease_change"];
+const inspectionChecklist = [
+  "لا توجد ملاحظات",
+  "رشح أو تسريب",
+  "تلف أو خروج السيل من مكانه",
+  "يحتاج تزويد",
+  "تلف البيرنج",
+  "جزء مفقود من المعدة / تلف الخطوط / تلف العداد",
+  "البيرنج تحت المادة / الشحم لا يمر",
+  "حالة الزيت غير جيدة",
+  "درجة الحرارة مرتفعة",
+  "المضخة لا تعمل",
+  "تم الفحص والحالة جيدة / تشحيم / تنظيف",
+  "تسريبات",
+  "يحتاج تنظيف",
+];
 
 export default async function WorkerTasksPage({
   searchParams,
@@ -243,19 +258,61 @@ function TaskExecutionDetails({ tasks }: { tasks: TaskRow[] }) {
         <ChevronDown className="h-4 w-4 text-[#607086]" aria-hidden="true" />
       </summary>
       <div className="grid gap-3 border-t border-[#e2e8ef] p-3">
-        {tasks.map((task, index) => (
-          <label key={task.id} className="block text-xs font-black text-[#324155]">
-            {workTypeLabel(task.maintenance_work_types?.code)} - {partLabel(task, index)}
-            <textarea
-              name={`task_note_${task.id}`}
-              rows={2}
-              placeholder="تفاصيل ما تم تنفيذه لهذا البند"
-              className="mt-2 w-full rounded-lg border border-[#cbd7e3] bg-[#fbfcfd] px-3 py-2.5 text-sm font-semibold outline-none transition focus:border-[#0b559f] focus:bg-white"
+        {tasks.map((task, index) =>
+          task.maintenance_work_types?.code === "inspection" ? (
+            <InspectionTaskDetails key={task.id} task={task} index={index} />
+          ) : (
+            <TaskNoteField key={task.id} task={task} index={index} />
+          ),
+        )}
+      </div>
+    </details>
+  );
+}
+
+function InspectionTaskDetails({ task, index }: { task: TaskRow; index: number }) {
+  return (
+    <section className="rounded-lg border border-[#dbe3ea] bg-[#fbfcfd] p-3">
+      <p className="text-xs font-black text-[#324155]">
+        {workTypeLabel(task.maintenance_work_types?.code)} - {partLabel(task, index)}
+      </p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {inspectionChecklist.map((item) => (
+          <label key={item} className="flex min-h-11 items-center gap-2 rounded-lg border border-[#dbe3ea] bg-white px-3 py-2 text-xs font-bold text-[#324155]">
+            <input
+              type="checkbox"
+              name={`inspection_check_${task.id}`}
+              value={item}
+              className="h-4 w-4 shrink-0 accent-[#0b559f]"
             />
+            <span>{item}</span>
           </label>
         ))}
       </div>
-    </details>
+      <label className="mt-3 block text-xs font-black text-[#324155]">
+        ملاحظات أخرى
+        <textarea
+          name={`task_note_${task.id}`}
+          rows={2}
+          placeholder="اكتب أي ملاحظة غير موجودة في القائمة"
+          className="mt-2 w-full rounded-lg border border-[#cbd7e3] bg-white px-3 py-2.5 text-sm font-semibold outline-none transition focus:border-[#0b559f] focus:bg-white"
+        />
+      </label>
+    </section>
+  );
+}
+
+function TaskNoteField({ task, index }: { task: TaskRow; index: number }) {
+  return (
+    <label className="block text-xs font-black text-[#324155]">
+      {workTypeLabel(task.maintenance_work_types?.code)} - {partLabel(task, index)}
+      <textarea
+        name={`task_note_${task.id}`}
+        rows={2}
+        placeholder="تفاصيل ما تم تنفيذه لهذا البند"
+        className="mt-2 w-full rounded-lg border border-[#cbd7e3] bg-[#fbfcfd] px-3 py-2.5 text-sm font-semibold outline-none transition focus:border-[#0b559f] focus:bg-white"
+      />
+    </label>
   );
 }
 
