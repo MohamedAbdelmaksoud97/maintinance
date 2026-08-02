@@ -21,6 +21,7 @@ const zeroSummary: DashboardSummary = {
   pendingWorkers: 0,
   todayNotifications: 0,
   lowStockMaterials: 0,
+  urgentPlannedTasks: 0,
 };
 
 async function countRows(
@@ -33,6 +34,7 @@ async function countRows(
     | { kind: "pendingWorkers" }
     | { kind: "notificationDate"; start: string; end: string }
     | { kind: "lowStock" }
+    | { kind: "urgentPlannedTasks" }
     | { kind: "scheduledRange"; start: string; end?: string }
     | { kind: "shutdownTasks"; start: string },
   oldStatusId?: string,
@@ -61,6 +63,9 @@ async function countRows(
   }
   if (filter?.kind === "lowStock") {
     query = query.in("stock_status", ["LOW", "REORDER"]);
+  }
+  if (filter?.kind === "urgentPlannedTasks") {
+    query = query.eq("approval_status", "pending").is("reassigned_task_id", null);
   }
   if (filter?.kind === "scheduledRange") {
     query = query.gte("scheduled_date", filter.start).is("completed_at", null);
@@ -124,6 +129,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     pendingWorkers,
     todayNotifications,
     lowStockMaterials,
+    urgentPlannedTasks,
   ] = await Promise.all([
     countRows(supabase, "import_files"),
     countRows(supabase, "imported_rows"),
@@ -146,6 +152,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
       end: `${tomorrowSaudi}T00:00:00+03:00`,
     }),
     countRows(supabase, "material_stock_alerts", { kind: "lowStock" }),
+    countRows(supabase, "non_execution_reports", { kind: "urgentPlannedTasks" }),
   ]);
 
   return {
@@ -167,6 +174,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     pendingWorkers,
     todayNotifications,
     lowStockMaterials,
+    urgentPlannedTasks,
   };
 }
 

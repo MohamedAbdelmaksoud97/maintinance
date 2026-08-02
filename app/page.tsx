@@ -16,7 +16,7 @@ export default async function Page() {
     .in("stock_status", ["LOW", "REORDER"])
     .order("stock_quantity", { ascending: true })
     .limit(6);
-  const maxPlanValue = Math.max(summary.dueToday, summary.dueNext7Days, summary.dueNext30Days, summary.shutdownTasks, 1);
+  const maxPlanValue = Math.max(summary.dueToday, summary.dueNext7Days, summary.dueNext30Days, summary.shutdownTasks, summary.urgentPlannedTasks, 1);
   const maxAssetValue = Math.max(summary.equipment, summary.materials, summary.lowStockMaterials, 1);
 
   return (
@@ -34,7 +34,7 @@ export default async function Page() {
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="مستحق اليوم" value={summary.dueToday} tone={summary.dueToday > 0 ? "warning" : "success"} />
         <MetricCard label="خلال 7 أيام" value={summary.dueNext7Days} />
-        <MetricCard label="خلال 30 يوم" value={summary.dueNext30Days} />
+        <MetricCard label="مهام خطة عاجلة" value={summary.urgentPlannedTasks} tone={summary.urgentPlannedTasks > 0 ? "danger" : "success"} />
         <MetricCard label="تحتاج توقف" value={summary.shutdownTasks} tone="danger" />
       </section>
 
@@ -53,7 +53,7 @@ export default async function Page() {
           <div className="mt-6 flex h-72 items-end gap-3 rounded-lg border border-[#e2e8ef] bg-[#f8fafc] p-4">
             <VerticalBar label="اليوم" value={summary.dueToday} max={maxPlanValue} tone="warning" />
             <VerticalBar label="7 أيام" value={summary.dueNext7Days} max={maxPlanValue} tone="neutral" />
-            <VerticalBar label="30 يوم" value={summary.dueNext30Days} max={maxPlanValue} tone="success" />
+            <VerticalBar label="عاجلة" value={summary.urgentPlannedTasks} max={maxPlanValue} tone="danger" />
             <VerticalBar label="توقف" value={summary.shutdownTasks} max={maxPlanValue} tone="danger" />
           </div>
         </ContentCard>
@@ -82,7 +82,7 @@ export default async function Page() {
           <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatTile label="مستحق اليوم" value={summary.dueToday} tone="warning" />
             <StatTile label="قادم خلال أسبوع" value={summary.dueNext7Days} tone="neutral" />
-            <StatTile label="قادم خلال شهر" value={summary.dueNext30Days} tone="success" />
+            <StatTile label="مهام خطة عاجلة" value={summary.urgentPlannedTasks} tone="danger" />
             <StatTile label="مهام أثناء التوقف" value={summary.shutdownTasks} tone="danger" />
           </div>
         </ContentCard>

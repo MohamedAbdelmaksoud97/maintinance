@@ -18,7 +18,7 @@ export default async function WorkerNotificationsPage({
 
   const notifications = (data ?? []) as unknown as WorkerNotification[];
   const pendingCount = notifications.filter((notification) => notification.status === "pending").length;
-  const taskCount = notifications.filter((notification) => ["daily_task", "rescheduled_task", "adhoc_task"].includes(notification.notification_type)).length;
+  const taskCount = notifications.filter((notification) => ["daily_task", "rescheduled_task", "urgent_planned_task", "adhoc_task"].includes(notification.notification_type)).length;
   const adminCount = notifications.filter((notification) => ["account_approved", "area_assignment_updated"].includes(notification.notification_type)).length;
 
   return (

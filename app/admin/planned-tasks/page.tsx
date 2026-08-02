@@ -126,7 +126,7 @@ export default async function PlannedTasksPage({
     taskQuery,
     supabase
       .from("non_execution_reports")
-      .select("id,reason,created_at,workers(full_name),planned_tasks(id,scheduled_date,equipment(id,equipment_code,name,area_id,areas(name)))")
+      .select("id,reason,created_at,workers(full_name),planned_tasks!non_execution_reports_task_id_fkey(id,scheduled_date,equipment(id,equipment_code,name,area_id,areas(name)))")
       .eq("approval_status", "pending")
       .order("created_at", { ascending: false })
       .limit(100),
@@ -143,7 +143,14 @@ export default async function PlannedTasksPage({
   const internalTaskCount = equipmentGroups.reduce((sum, group) => sum + group.tasks.length, 0);
 
   return (
-    <AppShell actions={<NavButton href="/admin/planned-tasks/new">إضافة مهمة للخطة</NavButton>}>
+    <AppShell
+      actions={
+        <>
+          <NavButton href="/admin/urgent-planned-tasks" variant="secondary">مهام الخطة العاجلة</NavButton>
+          <NavButton href="/admin/planned-tasks/new">إضافة مهمة للخطة</NavButton>
+        </>
+      }
+    >
       <PageHeader
         eyebrow="خطة الصيانة"
         title="مهام اليوم حسب المعدة"

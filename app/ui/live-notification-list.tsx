@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { CheckCircle2, Clock3, ExternalLink, ImageIcon } from "lucide-react";
+import Link from "next/link";
 import { reschedulePlannedTaskGroupAction } from "@/app/auth/actions";
 import { SubmitButton } from "@/app/ui/submit-button";
 import { createClient } from "@/utils/supabase/client";
@@ -223,7 +224,7 @@ function WorkerNotificationCard({
             <StatusBadge>{formatDateTime(notification.scheduled_for)}</StatusBadge>
           </BadgeRow>
           <h2 className="mt-3 break-words text-lg font-black text-[#172033]">
-            {valueText(payload.message_ar) || workerTypeLabel(notification.notification_type)}
+            {workerNotificationTitle(notification.notification_type, payload)}
           </h2>
           <p className="mt-1 text-sm font-semibold leading-6 text-[#607086]">
             {task
@@ -232,8 +233,8 @@ function WorkerNotificationCard({
           </p>
         </div>
         <div className="grid gap-2 lg:min-w-[160px]">
-          <StatusBadge tone={notification.notification_type === "adhoc_task" ? "danger" : "success"}>
-            {notification.notification_type === "adhoc_task" ? "مهمة عارضة" : "متابعة"}
+          <StatusBadge tone={["adhoc_task", "urgent_planned_task"].includes(notification.notification_type) ? "danger" : "success"}>
+            {notification.notification_type === "adhoc_task" ? "مهمة عارضة" : notification.notification_type === "urgent_planned_task" ? "مهمة عاجلة" : "متابعة"}
           </StatusBadge>
           {unread ? <AsyncButton loading={loading} onClick={onMarkRead} label="تم الاطلاع" /> : null}
         </div>
@@ -291,13 +292,21 @@ function AdminNotificationCard({
 
         <div className="grid gap-2 xl:min-w-[360px]">
           {isReschedulable && task?.id ? (
-            <form action={reschedulePlannedTaskGroupAction} className="grid gap-2 rounded-lg border border-[#dbe3ea] bg-[#fbfcfd] p-3">
-              <input type="hidden" name="task_ids" value={task.id} />
-              <input type="hidden" name="return_date" value={task.scheduled_date} />
-              <input name="new_date" type="date" required defaultValue={task.scheduled_date} className="rounded-lg border border-[#cbd7e3] bg-white px-3 py-2.5 text-sm font-bold outline-none transition focus:border-[#0b559f]" />
-              <input name="reason" placeholder="ملاحظة إعادة الجدولة" className="rounded-lg border border-[#cbd7e3] bg-white px-3 py-2.5 text-sm font-bold outline-none transition focus:border-[#0b559f]" />
-              <SubmitButton pendingText="جاري الحفظ">تحديد موعد جديد</SubmitButton>
-            </form>
+            <>
+              <Link
+                href="/admin/urgent-planned-tasks"
+                className="inline-flex items-center justify-center rounded-lg bg-[#c1121f] px-4 py-3 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#991b1b] hover:shadow-md active:translate-y-0"
+              >
+                إسناد كمهمة خطة عاجلة
+              </Link>
+              <form action={reschedulePlannedTaskGroupAction} className="grid gap-2 rounded-lg border border-[#dbe3ea] bg-[#fbfcfd] p-3">
+                <input type="hidden" name="task_ids" value={task.id} />
+                <input type="hidden" name="return_date" value={task.scheduled_date} />
+                <input name="new_date" type="date" required defaultValue={task.scheduled_date} className="rounded-lg border border-[#cbd7e3] bg-white px-3 py-2.5 text-sm font-bold outline-none transition focus:border-[#0b559f]" />
+                <input name="reason" placeholder="ملاحظة إعادة الجدولة" className="rounded-lg border border-[#cbd7e3] bg-white px-3 py-2.5 text-sm font-bold outline-none transition focus:border-[#0b559f]" />
+                <SubmitButton pendingText="جاري الحفظ">إعادة جدولة فقط</SubmitButton>
+              </form>
+            </>
           ) : null}
 
           {isPending ? <AsyncButton loading={loading} onClick={onMarkRead} label="تعليم كمقروء" /> : null}
@@ -470,10 +479,16 @@ function cardClass(unread: boolean, accent = false) {
 function workerTypeLabel(value: string) {
   if (value === "daily_task") return "مهمة يومية";
   if (value === "rescheduled_task") return "إعادة جدولة";
+  if (value === "urgent_planned_task") return "مهمة خطة عاجلة";
   if (value === "adhoc_task") return "مهمة عارضة";
   if (value === "account_approved") return "اعتماد الحساب";
   if (value === "area_assignment_updated") return "تحديث المناطق";
   return "إشعار جديد";
+}
+
+function workerNotificationTitle(type: string, payload: Record<string, unknown>) {
+  if (type === "urgent_planned_task") return "تم إسناد مهمة خطة عاجلة لك";
+  return valueText(payload.message_ar) || workerTypeLabel(type);
 }
 
 function workerStatusLabel(value: string) {

@@ -11,6 +11,9 @@ import Link from "next/link";
 type TaskRow = {
   id: string;
   scheduled_date: string;
+  is_urgent: boolean | null;
+  urgent_attempt_no: number | null;
+  urgent_parent_task_id: string | null;
   planned_quantity: number | null;
   planned_quantity_unit: string | null;
   execution_condition: string | null;
@@ -98,7 +101,7 @@ export default async function WorkerTasksPage({
   const plannedTaskQuery = supabase
       .from("planned_tasks")
       .select(
-        "id,scheduled_date,planned_quantity,planned_quantity_unit,execution_condition,original_values,equipment(id,equipment_code,name,area_id,areas(name),production_lines(line_code,name)),maintenance_points(point_name,part_description,execution_condition,running_hours_per_day,frequency_days,frequency_hours,last_change_date,last_inspection_date,last_grease_date,original_values),materials(name,unit,material_kind),maintenance_work_types(code,name)",
+        "id,scheduled_date,is_urgent,urgent_attempt_no,urgent_parent_task_id,planned_quantity,planned_quantity_unit,execution_condition,original_values,equipment(id,equipment_code,name,area_id,areas(name),production_lines(line_code,name)),maintenance_points(point_name,part_description,execution_condition,running_hours_per_day,frequency_days,frequency_hours,last_change_date,last_inspection_date,last_grease_date,original_values),materials(name,unit,material_kind),maintenance_work_types(code,name)",
       )
       .eq("scheduled_date", visibleDate)
       .order("id", { ascending: true })
@@ -119,9 +122,10 @@ export default async function WorkerTasksPage({
   ]);
 
   const tasks = (plannedTasks ?? []) as unknown as TaskRow[];
-  const equipmentGroups = groupByEquipment(tasks);
+  const urgentGroups = groupByEquipment(tasks.filter((task) => task.is_urgent));
+  const equipmentGroups = groupByEquipment(tasks.filter((task) => !task.is_urgent));
   const notifications = (notificationRows ?? []) as unknown as NotificationRow[];
-  const internalTaskCount = equipmentGroups.reduce((sum, group) => sum + group.tasks.length, 0);
+  const internalTaskCount = tasks.length;
 
   return (
     <AppShell navigationScope="worker">
@@ -140,11 +144,23 @@ export default async function WorkerTasksPage({
 
       <FlashToast message={message} />
 
-      <section className="mb-5 grid gap-3 sm:grid-cols-3">
+      <section className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="معدات مطلوبة" value={equipmentGroups.length} />
         <MetricCard label="أعمال داخلية" value={internalTaskCount} tone="warning" />
+        <MetricCard label="مهام عاجلة" value={urgentGroups.length} tone={urgentGroups.length ? "danger" : "success"} />
         <MetricCard label="إشعارات اليوم" value={notifications.length} tone="success" />
       </section>
+
+      {urgentGroups.length ? (
+        <>
+          <SectionTitle title="مهام خطة عاجلة" count={urgentGroups.length} description="هذه المهام أُعيد إسنادها بعد عدم تنفيذ سابق، وتحتاج متابعة أولوية." />
+          <section className="mb-5 grid gap-3">
+            {urgentGroups.map((group) => (
+              <EquipmentTaskCard key={group.id} group={group} today={today} selectedDate={visibleDate} />
+            ))}
+          </section>
+        </>
+      ) : null}
 
       <SectionTitle title="مهام الخطة حسب المعدة" count={equipmentGroups.length} description="مهام التاريخ المحدد مجمعة حسب المعدة لتقليل الزحمة أثناء التنفيذ." />
       <section className="grid gap-3">
@@ -180,6 +196,9 @@ function EquipmentTaskCard({ group, today, selectedDate }: { group: EquipmentTas
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
+              {group.tasks.some((task) => task.is_urgent) ? (
+                <StatusBadge tone="danger">عاجلة · محاولة {group.tasks[0]?.urgent_attempt_no?.toLocaleString("ar-EG") ?? "1"}</StatusBadge>
+              ) : null}
               <StatusBadge tone={group.scheduledDate === today ? "warning" : "neutral"}>
                 {group.scheduledDate === today ? "اليوم" : group.scheduledDate}
               </StatusBadge>

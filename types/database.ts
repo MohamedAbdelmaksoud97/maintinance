@@ -18,6 +18,7 @@ export type DashboardSummary = {
   pendingWorkers: number;
   todayNotifications: number;
   lowStockMaterials: number;
+  urgentPlannedTasks: number;
 };
 
 export type ImportBatchSummary = {

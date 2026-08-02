@@ -161,6 +161,29 @@ type PlannedTaskRow = {
   task_statuses: { code: string | null; name: string | null } | null;
 };
 
+type UrgentPlannedTaskRow = {
+  id: string;
+  scheduled_date: string;
+  execution_condition: string | null;
+  planned_quantity: number | null;
+  planned_quantity_unit: string | null;
+  urgent_attempt_no: number | null;
+  equipment: {
+    id: string | null;
+    equipment_code: string | null;
+    name: string | null;
+    areas: AnnualReportArea | null;
+    production_lines: { line_code: string | null; name: string | null } | null;
+  } | null;
+  maintenance_points: {
+    point_name: string | null;
+    part_description: string | null;
+    original_values: Record<string, unknown> | null;
+  } | null;
+  materials: { name: string | null; unit: string | null; material_kind: string | null } | null;
+  maintenance_work_types: { code: string | null; name: string | null } | null;
+};
+
 type NonExecutionReportRow = {
   reason: string | null;
   planned_tasks: { id: string | null } | null;
@@ -281,6 +304,9 @@ export async function buildAnnualMaintenanceReport(
     }
   }
 
+  const urgentDetails = await loadUrgentTaskDetails(supabase, { start, end, areaCode: selectedAreaCode, workTypeCode: selectedWorkTypeCode });
+  details.push(...urgentDetails);
+
   details.sort((a, b) => a.date.localeCompare(b.date) || a.equipmentCode.localeCompare(b.equipmentCode) || workTypeSort(a.workTypeCode) - workTypeSort(b.workTypeCode));
 
   const buckets = createDayBuckets(year);
@@ -352,6 +378,52 @@ async function loadMaintenancePoints(supabase: SupabaseLike) {
   );
 }
 
+async function loadUrgentTaskDetails(
+  supabase: SupabaseLike,
+  options: { start: string; end: string; areaCode: string | null; workTypeCode: string | null },
+) {
+  const urgentTasks = await fetchAll<UrgentPlannedTaskRow>(
+    (from, to) =>
+      supabase
+        .from("planned_tasks")
+        .select(
+          "id,scheduled_date,execution_condition,planned_quantity,planned_quantity_unit,urgent_attempt_no,equipment!inner(id,equipment_code,name,areas(id,code,name),production_lines(line_code,name)),maintenance_points(point_name,part_description,original_values),materials(name,unit,material_kind),maintenance_work_types!inner(code,name)",
+        )
+        .eq("is_urgent", true)
+        .gte("scheduled_date", options.start)
+        .lte("scheduled_date", options.end)
+        .order("scheduled_date", { ascending: true })
+        .range(from, to),
+  );
+
+  return urgentTasks.flatMap<AnnualReportDetail>((task) => {
+    const area = task.equipment?.areas;
+    const workTypeCode = task.maintenance_work_types?.code ?? "";
+    if (!area?.code || !workTypeCode) return [];
+    if (options.areaCode && area.code !== options.areaCode) return [];
+    if (options.workTypeCode && workTypeCode !== options.workTypeCode) return [];
+
+    return [{
+      date: task.scheduled_date,
+      previousScheduledDate: stringValue(task.maintenance_points?.original_values?.previous_scheduled_date) || "-",
+      areaCode: area.code,
+      areaName: area.name,
+      lineCode: (task.equipment?.production_lines?.line_code ?? stringValue(task.maintenance_points?.original_values?.line_code)) || "لايوجد",
+      equipmentId: task.equipment?.id ?? "لايوجد",
+      equipmentCode: task.equipment?.equipment_code ?? "لايوجد",
+      equipmentName: task.equipment?.name ?? "لايوجد",
+      workTypeCode,
+      workTypeName: `${workTypeLabel(workTypeCode, task.maintenance_work_types?.name)} - عاجلة`,
+      partDescription: task.maintenance_points?.part_description ?? "لايوجد",
+      pointName: `${task.maintenance_points?.point_name ?? "لايوجد"} / محاولة عاجلة ${task.urgent_attempt_no ?? 1}`,
+      materialName: task.materials?.name ?? "لايوجد",
+      quantity: numberValue(task.planned_quantity),
+      quantityUnit: task.planned_quantity_unit ?? task.materials?.unit ?? "لايوجد",
+      executionCondition: task.execution_condition ?? "configurable",
+    }];
+  });
+}
+
 export async function loadAnnualReportLiveStatus(
   supabase: SupabaseLike,
   options: { year: number; areaCode?: string | null; workTypeCode?: string | null },
@@ -380,7 +452,7 @@ export async function loadAnnualReportLiveStatus(
       (from, to) =>
         supabase
           .from("non_execution_reports")
-          .select("reason,planned_tasks(id,scheduled_date)")
+          .select("reason,planned_tasks!non_execution_reports_task_id_fkey(id,scheduled_date)")
           .range(from, to),
       250,
     ),

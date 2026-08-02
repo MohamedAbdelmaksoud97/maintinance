@@ -753,6 +753,38 @@ export async function reschedulePlannedTaskGroupAction(formData: FormData) {
   redirect(`/admin/planned-tasks?date=${newDate}&message=${encoded("تم حفظ الموعد الجديد وتحديث الخطة بنجاح")}`);
 }
 
+export async function assignUrgentPlannedTaskAction(formData: FormData) {
+  const supabase = createClient(await cookies());
+  const taskId = optionalText(formData.get("task_id"));
+  const workerId = optionalText(formData.get("worker_id"));
+  const scheduledDate = optionalText(formData.get("scheduled_date")) ?? getSaudiToday();
+  const returnDate = optionalText(formData.get("return_date")) ?? scheduledDate;
+  const reason = optionalText(formData.get("reason"));
+
+  if (!taskId || !workerId || !/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)) {
+    redirect(`/admin/urgent-planned-tasks?message=${encoded("اختر المهمة والعامل وتاريخا صحيحا للإسناد العاجل")}`);
+  }
+
+  const { error } = await supabase.rpc("assign_urgent_planned_task", {
+    target_task_id: taskId,
+    target_worker_id: workerId,
+    scheduled_date_value: scheduledDate,
+    reason_value: reason,
+  });
+
+  if (error) {
+    redirect(`/admin/urgent-planned-tasks?message=${encoded(error.message)}`);
+  }
+
+  revalidatePath("/");
+  revalidatePath("/admin/planned-tasks");
+  revalidatePath("/admin/urgent-planned-tasks");
+  revalidatePath("/admin/notifications");
+  revalidatePath("/worker/tasks");
+  revalidatePath("/worker/notifications");
+  redirect(`/admin/urgent-planned-tasks?date=${returnDate}&message=${encoded("تم إسناد مهمة خطة عاجلة للعامل وإرسال الإشعار")}`);
+}
+
 export async function markAdminNotificationReadAction(formData: FormData) {
   const supabase = createClient(await cookies());
   const notificationId = String(formData.get("notification_id") ?? "");

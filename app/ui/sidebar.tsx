@@ -10,6 +10,7 @@ import {
   ClipboardList,
   FileSpreadsheet,
   Gauge,
+  Siren,
   ListChecks,
   Menu,
   Bell,
@@ -25,6 +26,7 @@ type NavigationScope = "admin" | "worker";
 const adminNavItems = [
   { href: "/", label: "لوحة الإحصائيات", icon: Gauge },
   { href: "/admin/planned-tasks", label: "خطة الصيانة", icon: CalendarDays },
+  { href: "/admin/urgent-planned-tasks", label: "مهام الخطة العاجلة", icon: Siren },
   { href: "/admin/reports", label: "التقارير", icon: FileSpreadsheet },
   { href: "/admin/notifications", label: "إشعارات المدير", icon: Bell },
   { href: "/admin/data-completion", label: "بيانات تحتاج استكمال", icon: ListChecks },
