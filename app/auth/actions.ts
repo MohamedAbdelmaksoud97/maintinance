@@ -593,10 +593,22 @@ export async function submitNonExecutionGroupAction(formData: FormData) {
   const supabase = createClient(await cookies());
   const taskIds = selectedValues(formData, "task_ids");
   const returnDate = optionalText(formData.get("return_date")) ?? getSaudiToday();
-  const reason = String(formData.get("reason") ?? "").trim();
+  const selectedReasons = selectedValues(formData, "non_execution_reason");
+  const writtenReason = optionalText(formData.get("reason"));
+  const reasonParts: string[] = [];
+
+  if (selectedReasons.length) {
+    reasonParts.push(`أسباب عدم التنفيذ: ${selectedReasons.join("، ")}`);
+  }
+
+  if (writtenReason) {
+    reasonParts.push(`تفاصيل إضافية: ${writtenReason}`);
+  }
+
+  const reason = reasonParts.join("\n");
 
   if (!taskIds.length || !reason) {
-    redirect(`/worker/tasks?date=${returnDate}&message=${encoded("اختر مهمة واكتب سبب عدم التنفيذ")}`);
+    redirect(`/worker/tasks?date=${returnDate}&message=${encoded("اختر مهمة وحدد سبب عدم التنفيذ أو اكتب السبب")}`);
   }
 
   let evidencePaths: string[] = [];

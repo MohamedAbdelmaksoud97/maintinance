@@ -70,6 +70,16 @@ const inspectionChecklist = [
   "تسريبات",
   "يحتاج تنظيف",
 ];
+const nonExecutionReasons = [
+  "تكليف طارئ",
+  "استمرار التشغيل",
+  "تأخر المهمة السابقة",
+  "تحتاج مساعد",
+  "نقص مواد أو أدوات",
+  "تعارض أعمال",
+  "تأخر التصاريح",
+  "عائق أمني أو بيئي",
+];
 
 export default async function WorkerTasksPage({
   searchParams,
@@ -234,9 +244,10 @@ function EquipmentTaskCard({ group, today, selectedDate }: { group: EquipmentTas
               <p className="text-sm font-black text-[#7f1d1d]">سبب عدم التنفيذ</p>
               <p className="mt-1 text-xs font-bold text-[#9f4a4a]">متاح الآن، والاستخدام الطبيعي بعد الساعة 4 مساء بتوقيت السعودية.</p>
             </div>
+            <NonExecutionReasonChecklist />
             <label className="block text-sm font-black text-[#324155]">
-              السبب
-              <textarea name="reason" rows={4} required className="mt-2 w-full rounded-lg border border-[#e5b7b7] bg-white px-3 py-2.5 font-semibold outline-none" />
+              سبب آخر أو تفاصيل إضافية
+              <textarea name="reason" rows={4} className="mt-2 w-full rounded-lg border border-[#e5b7b7] bg-white px-3 py-2.5 font-semibold outline-none" />
             </label>
             <label className="block text-sm font-black text-[#324155]">
               صور أو إثباتات اختيارية
@@ -247,6 +258,27 @@ function EquipmentTaskCard({ group, today, selectedDate }: { group: EquipmentTas
         </div>
       </div>
     </details>
+  );
+}
+
+function NonExecutionReasonChecklist() {
+  return (
+    <div className="rounded-lg border border-[#f1c7c7] bg-white p-3">
+      <p className="text-xs font-black text-[#7f1d1d]">اختر سببًا أو أكثر</p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {nonExecutionReasons.map((reason) => (
+          <label key={reason} className="flex min-h-11 items-center gap-2 rounded-lg border border-[#e5b7b7] bg-[#fff7f7] px-3 py-2 text-xs font-bold text-[#324155]">
+            <input
+              type="checkbox"
+              name="non_execution_reason"
+              value={reason}
+              className="h-4 w-4 shrink-0 accent-[#c1121f]"
+            />
+            <span>{reason}</span>
+          </label>
+        ))}
+      </div>
+    </div>
   );
 }
 
